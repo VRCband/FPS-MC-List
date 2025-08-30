@@ -1,0 +1,34 @@
+[
+  {
+    "message": "Welcome to the server!",
+    "Text_Color": "green",
+    "Text_Size": 1.5,
+    "bgColor": "black",
+    "duration": 5,
+    "monitorID": "all"
+  },
+  {
+    "message": "Paradigm restart in 10 minutes!",
+    "Text_Color": "red",
+    "Text_Size": 2,
+    "bgColor": "black",
+    "duration": 7,
+    "monitorID": "left_monitor"
+  },
+  {
+    "message": "Use /warp market to trade!",
+    "Text_Color": "yellow",
+    "Text_Size": 1,
+    "bgColor": "blue",
+    "duration": 4,
+    "monitorID": "right_monitor"
+  },
+  {
+    "message": "Check your mail at the post office!",
+    "Text_Color": "white",
+    "Text_Size": 1.2,
+    "bgColor": "purple",
+    "duration": 6,
+    "monitorID": "all"
+  }
+]
