@@ -4,7 +4,7 @@ local jsonURL = "https://raw.githubusercontent.com/VRCband/FPS-MC-List/refs/head
 
 -- Discover all monitors
 local monitors = {}
-for name, _ in pairs(peripheral.getNames()) do
+for _, name in ipairs(peripheral.getNames()) do
     if peripheral.getType(name) == "monitor" then
         monitors[name] = peripheral.wrap(name)
     end
