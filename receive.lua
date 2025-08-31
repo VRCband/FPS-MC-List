@@ -1,107 +1,131 @@
--- Open all modem types
-for _, side in ipairs({ "left", "right", "top", "bottom", "back", "front" }) do
-    if peripheral.getType(side) == "modem" then
-        rednet.open(side)
-    end
+-- receive.lua
+-- Self-update URL: https://github.com/VRCband/FPS-MC-List/raw/refs/heads/main/receive.lua
+
+-- Open all modem sides
+for _, side in ipairs({ "left","right","top","bottom","back","front" }) do
+  if peripheral.getType(side)=="modem" then rednet.open(side) end
 end
 
--- Discover all monitors
+-- Self-update listener
+local function listenForUpdate()
+  while true do
+    local _, msg = rednet.receive("billboard_update")
+    if msg=="update" then
+      print("Receiver update signal received.")
+      local name = shell.getRunningProgram()
+      local url  = "https://github.com/VRCband/FPS-MC-List/raw/refs/heads/main/"..name
+      if fs.exists(name) then fs.delete(name) end
+      shell.run("wget", url, name)
+      print("Restarting updated receiver…")
+      shell.run(name)
+      return
+    end
+  end
+end
+
+-- CONFIG PERSISTENCE
+local cfgFile = "receiver.cfg"
+local lastChan
+if fs.exists(cfgFile) then
+  local f = fs.open(cfgFile,"r")
+  local ok,data = pcall(textutils.unserialize, f.readAll())
+  f.close()
+  if ok and type(data)=="table" then lastChan = data.channel end
+end
+
+-- PROMPT WITH TIMEOUT
+local function promptDefault(prompt, default)
+  local timer = os.startTimer(5)
+  write(string.format("%s [%s]: ",prompt,default or ""))
+  while true do
+    local e,p = os.pullEvent()
+    if e=="timer" and p==timer then return nil end
+    if e=="char" or e=="key" then
+      local input = read()
+      return input~="" and input or nil
+    end
+  end
+end
+
+-- CHANNEL
+term.clear(); term.setCursorPos(1,1)
+local ci = promptDefault("Enter channel", lastChan)
+local channel = ci or lastChan
+if not channel then error("No channel provided.") end
+
+-- SAVE CONFIG
+local f = fs.open(cfgFile,"w")
+f.write(textutils.serialize({ channel=channel }))
+f.close()
+
+local proto = "billboard_"..channel
+
+-- DISCOVER MONITORS
 local monitors = {}
-for _, name in ipairs(peripheral.getNames()) do
-    if peripheral.getType(name) == "monitor" then
-        monitors[name] = peripheral.wrap(name)
+for _,name in ipairs(peripheral.getNames()) do
+  if peripheral.getType(name)=="monitor" then
+    monitors[name]=peripheral.wrap(name)
+  end
+end
+if next(monitors)==nil then error("No monitors attached") end
+
+-- RENDER HELPERS (same as before)
+local function renderImage(url)
+  local path="temp_image.nfp"
+  if fs.exists(path) then fs.delete(path) end
+  shell.run("wget",url,path)
+  local img=paintutils.loadImage(path); if not img then return end
+  for _,m in pairs(monitors) do
+    local mw,mh=m.getSize(); local iw,ih=#img[1],#img
+    local scaled=img
+    if iw>mw or ih>mh then
+      local sc=math.min(mw/iw,mh/ih); local tmp={}
+      for y=1,mh do tmp[y]={}
+        for x=1,mw do
+          local sx=math.max(1,math.min(iw,math.floor(x/sc)))
+          local sy=math.max(1,math.min(ih,math.floor(y/sc)))
+          tmp[y][x]=img[sy][sx]
+        end
+      end
+      scaled=tmp
     end
+    m.setBackgroundColor(colors.black); m.clear()
+    paintutils.drawImage(scaled,1,1)
+  end
 end
 
-if next(monitors) == nil then error("No monitors attached") end
-
--- Render image from .nfp file to all monitors
-local function renderImage(imageURL)
-    local path = "temp_image.nfp"
-    if fs.exists(path) then fs.delete(path) end
-    shell.run("wget", imageURL, path)
-    local image = paintutils.loadImage(path)
-    if not image then return end
-
-    for _, monitor in pairs(monitors) do
-        local mw, mh = monitor.getSize()
-        local iw = #image[1]
-        local ih = #image
-
-        local scaledImage = image
-        if iw > mw or ih > mh then
-            local scaleX = mw / iw
-            local scaleY = mh / ih
-            local scale = math.min(scaleX, scaleY)
-            local scaled = {}
-
-            for y = 1, mh do
-                local row = {}
-                for x = 1, mw do
-                    local srcX = math.floor(x / scale)
-                    local srcY = math.floor(y / scale)
-                    srcX = math.max(1, math.min(srcX, iw))
-                    srcY = math.max(1, math.min(srcY, ih))
-                    row[x] = image[srcY][srcX]
-                end
-                scaled[y] = row
-            end
-
-            scaledImage = scaled
-        end
-
-        monitor.setBackgroundColor(colors.black)
-        monitor.clear()
-        paintutils.drawImage(scaledImage, 1, 1)
+local function renderText(e)
+  for _,m in pairs(monitors) do
+    m.setBackgroundColor(colors[e.bgColor] or colors.black)
+    m.clear(); m.setTextColor(colors[e.Text_Color] or colors.white)
+    m.setTextScale(tonumber(e.Text_Size) or 1)
+    local w,h=m.getSize(); local msg=e.message or ""
+    local lines={}
+    for word in msg:gmatch("%S+") do
+      if #lines==0 then lines[1]=word
+      else
+        local test=lines[#lines].." "..word
+        if #test<=w then lines[#lines]=test else lines[#lines+1]=word end
+      end
     end
+    local total=#lines; local startY=math.floor(h/2)-math.floor(total/2)
+    for i,line in ipairs(lines) do
+      local pad=math.floor((w-#line)/2)
+      m.setCursorPos(pad+1,startY+i-1); m.write(line)
+    end
+  end
 end
 
--- Render wrapped text to all monitors
-local function renderText(entry)
-    for _, monitor in pairs(monitors) do
-        monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
-        monitor.clear()
-        monitor.setTextColor(colors[entry.Text_Color] or colors.white)
-        monitor.setTextScale(tonumber(entry.Text_Size) or 1)
-
-        local w, h = monitor.getSize()
-        local message = entry.message or ""
-        local lines = {}
-
-        for word in message:gmatch("%S+") do
-            if #lines == 0 then
-                table.insert(lines, word)
-            else
-                local testLine = lines[#lines] .. " " .. word
-                if #testLine <= w then
-                    lines[#lines] = testLine
-                else
-                    table.insert(lines, word)
-                end
-            end
-        end
-
-        local totalLines = #lines
-        local centerLine = math.floor(h / 2)
-        local startY = centerLine - math.floor(totalLines / 2)
-
-        for i, line in ipairs(lines) do
-            local pad = math.floor((w - #line) / 2)
-            monitor.setCursorPos(pad + 1, startY + i - 1)
-            monitor.write(line)
-        end
+-- LISTEN LOOP
+local function mainLoop()
+  while true do
+    local _,msg=rednet.receive(proto)
+    if type(msg)=="table" then
+      if msg.imageURL then renderImage(msg.imageURL)
+      elseif msg.message then renderText(msg) end
+      sleep(tonumber(msg.duration) or 5)
     end
+  end
 end
 
--- Listen loop
-while true do
-    local _, msg = rednet.receive("billboard")
-    if type(msg) == "table" then
-        if msg.imageURL then
-            renderImage(msg.imageURL)
-        elseif msg.message then
-            renderText(msg)
-        end
-        sleep(tonumber(msg.duration) or 5)
-    end
-end
+parallel.waitForAny(mainLoop, listenForUpdate)
