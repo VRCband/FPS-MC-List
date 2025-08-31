@@ -55,7 +55,7 @@ local function renderImage(imageURL)
   end
 end
 
--- Wrap helper (unchanged)
+-- Helper: wrap a single paragraph to max `width` characters
 local function wrapToWidth(text, width)
   local lines, i = {}, 1
   while i <= #text do
@@ -73,32 +73,57 @@ local function wrapToWidth(text, width)
   return lines
 end
 
--- Corrected renderTextCentered
+-- Helper: split a string on a literal separator
+local function split(str, sep)
+  local parts, last = {}, 1
+  sep = sep:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])","%%%1")
+  for s, e in function() return str:find(sep, last, true) end do
+    parts[#parts+1] = str:sub(last, s-1)
+    last = e + 1
+  end
+  parts[#parts+1] = str:sub(last)
+  return parts
+end
+
+-- Updated renderTextCentered with `/n` support
 local function renderTextCentered(monitor, entry)
   local w, h    = monitor.getSize()
-  local msg     = entry.message or ""
-  local lines   = wrapToWidth(msg, w)
+  local raw     = entry.message or ""
+  local paragraphs = split(raw, "/n")
+  local lines = {}
 
-  -- 1) set new background, then clear entire screen
+  -- wrap each paragraph, preserve blank line between
+  for pi, para in ipairs(paragraphs) do
+    local wrapped = wrapToWidth(para, w)
+    for _, line in ipairs(wrapped) do
+      lines[#lines+1] = line
+    end
+    if pi < #paragraphs then
+      lines[#lines+1] = ""  -- explicit blank line
+    end
+  end
+
+  -- center vertically
+  local total  = #lines
+  local startY = math.floor((h - total) / 2) + 1
+
+  -- set background *before* clearing
   local bg = colors[entry.bgColor] or colors.black
   monitor.setBackgroundColor(bg)
   monitor.clear()
 
-  -- 2) configure text color & scale
+  -- text settings
   monitor.setTextColor(colors[entry.Text_Color] or colors.white)
   monitor.setTextScale(tonumber(entry.Text_Size) or 1)
 
-  -- 3) compute vertical start so text block is dead-centered
-  local total  = #lines
-  local startY = math.floor((h - total) / 2) + 1
-
-  -- 4) draw each line, horizontally centered
+  -- draw each line, horizontally centered
   for i, line in ipairs(lines) do
-    local pad = math.floor((w - #line) / 2) + 1
-    monitor.setCursorPos(pad, startY + i - 1)
+    local pad = math.floor((w - #line) / 2)
+    monitor.setCursorPos(pad + 1, startY + i - 1)
     monitor.write(line)
   end
 end
+
 
 
 
