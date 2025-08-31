@@ -30,19 +30,47 @@ local function renderText(monitor, entry)
     monitor.write(msg)
 end
 
--- Render image from .nfp file
+-- Render image from .nfp file with scaling
 local function renderImage(monitor, imagePath)
     local image = paintutils.loadImage(imagePath)
-    if image then
-        monitor.setBackgroundColor(colors.black)
-        monitor.clear()
-        paintutils.drawImage(image, 1, 1)
-    else
+    if not image then
         monitor.clear()
         monitor.setCursorPos(1, 1)
         monitor.write("Failed to load image")
+        return
     end
+
+    local mw, mh = monitor.getSize()
+    local iw = #image[1]
+    local ih = #image
+
+    -- If image is too big, scale it down
+    if iw > mw or ih > mh then
+        local scaleX = mw / iw
+        local scaleY = mh / ih
+        local scale = math.min(scaleX, scaleY)
+
+        local scaled = {}
+        for y = 1, mh do
+            local row = {}
+            for x = 1, mw do
+                local srcX = math.floor(x / scale)
+                local srcY = math.floor(y / scale)
+                srcX = math.max(1, math.min(srcX, iw))
+                srcY = math.max(1, math.min(srcY, ih))
+                row[x] = image[srcY][srcX]
+            end
+            scaled[y] = row
+        end
+
+        image = scaled
+    end
+
+    monitor.setBackgroundColor(colors.black)
+    monitor.clear()
+    paintutils.drawImage(image, 1, 1)
 end
+
 
 -- Load JSON from file
 local function loadMessages()
