@@ -2,7 +2,7 @@
   {
     "message": "Welcome to the server!",
     "Text_Color": "green",
-    "Text_Size": 5,
+    "Text_Size": 4,
     "bgColor": "black",
     "duration": 5,
     "monitorID": "all"
@@ -10,7 +10,7 @@
   {
     "message": "# HALLOWEEN EVENT/nWe are now on our Halloween Event!",
     "Text_Color": "black",
-    "Text_Size": 5,
+    "Text_Size": 4,
     "bgColor": "orange",
     "duration": 5,
     "monitorID": "all"
@@ -18,7 +18,7 @@
   {
     "message": "Use a WayStone to go to Spawn and Shop!",
     "Text_Color": "yellow",
-    "Text_Size": 5,
+    "Text_Size": 4,
     "bgColor": "blue",
     "duration": 4,
     "monitorID": "all"
