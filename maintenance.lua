@@ -55,7 +55,7 @@ mon.setBackgroundColor(colors.orange)
 mon.clear()
 
 -- 4) Set text color
-mon.setTextColor(colors.white)
+mon.setTextColor(colors.black)
 
 -- 5) Center vertically & horizontally, then write
 local w, h = mon.getSize()
