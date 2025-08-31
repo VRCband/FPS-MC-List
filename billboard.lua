@@ -1,6 +1,6 @@
 -- CONFIG
 local jsonPath = "billboard.json"
-local jsonURL = "https://raw.githubusercontent.com/VRCband/FPS-MC-List/refs/heads/main/billboard.json?token=GHSAT0AAAAAADKFPCAW6A6ZO4MA2H4GCJVC2FTR3KQ"  -- Replace with your actual URL
+local jsonURL = "https://github.com/VRCband/FPS-MC-List/raw/refs/heads/main/billboard.json"  -- Replace with your actual URL
 
 -- Discover all monitors
 local monitors = {}
