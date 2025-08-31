@@ -55,42 +55,63 @@ local function renderImage(imageURL)
   end
 end
 
--- Render text helper
-local function renderText(entry)
-  for _, monitor in pairs(monitors) do
-    monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
-    monitor.clear()
-    monitor.setTextColor(colors[entry.Text_Color] or colors.white)
-    monitor.setTextScale(tonumber(entry.Text_Size) or 1)
-
-    local w, h    = monitor.getSize()
-    local message = entry.message or ""
-    local lines   = {}
-
-    for word in message:gmatch("%S+") do
-      if #lines == 0 then
-        table.insert(lines, word)
-      else
-        local testLine = lines[#lines] .. " " .. word
-        if #testLine <= w then
-          lines[#lines] = testLine
-        else
-          table.insert(lines, word)
-        end
-      end
+-- Utility: wrap a single paragraph to at most `width` chars
+local function wrapToWidth(text, width)
+  local lines = {}
+  local i = 1
+  while i <= #text do
+    -- Grab up to width chars
+    local chunk = text:sub(i, i + width - 1)
+    -- Find last space in chunk
+    local wrapPos = chunk:match("^.*() ") or 0
+    if wrapPos > 0 and #chunk == width then
+      -- break at last space
+      lines[#lines + 1] = text:sub(i, i + wrapPos - 2)
+      i = i + wrapPos
+    else
+      -- no space, or chunk shorter than width: hard break
+      lines[#lines + 1] = chunk
+      i = i + #chunk
     end
+    -- skip leading spaces on next line
+    while text:sub(i, i) == " " do i = i + 1 end
+  end
+  return lines
+end
 
-    local totalLines = #lines
-    local centerLine = math.floor(h / 2)
-    local startY     = centerLine - math.floor(totalLines / 2)
+-- New renderText (or renderLocally) function
+local function renderTextCentered(monitor, entry)
+  local w, h = monitor.getSize()
+  local message = entry.message or ""
 
-    for i, line in ipairs(lines) do
-      local pad = math.floor((w - #line) / 2)
-      monitor.setCursorPos(pad + 1, startY + i - 1)
-      monitor.write(line)
-    end
+  -- 1) get wrapped lines
+  local lines = wrapToWidth(message, w)
+
+  -- 2) vertical centering
+  local total = #lines
+  local startY = math.floor(h / 2) - math.floor(total / 2)
+  if startY < 1 then startY = 1 end
+
+  -- 3) paint each line, horizontally centered
+  monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
+  monitor.clear()
+  monitor.setTextColor(colors[entry.Text_Color] or colors.white)
+  monitor.setTextScale(tonumber(entry.Text_Size) or 1)
+
+  for i, line in ipairs(lines) do
+    local pad = math.floor((w - #line) / 2)
+    monitor.setCursorPos(pad + 1, startY + i - 1)
+    monitor.write(line)
   end
 end
+
+
+function renderText(entry)
+  for _, m in pairs(monitors) do
+    renderTextCentered(m, entry)
+  end
+end
+
 
 -- Listen for all billboard messages, then filter by channel
 while true do
