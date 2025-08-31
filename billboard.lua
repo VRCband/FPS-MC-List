@@ -1,6 +1,6 @@
 -- CONFIG
 local jsonPath = "billboard.json"
-local jsonURL = "https://yourdomain.com/billboard.json"
+local jsonURL = "https://github.com/VRCband/FPS-MC-List/raw/refs/heads/main/billboard.json"
 local routerID = rednet.lookup("billboard", "router")  -- Optional: set manually if needed
 
 -- Open all modem sides
