@@ -1,186 +1,167 @@
--- google_calendar_multi.lua
--- Fetch and display events from multiple public Google Calendars.
+-- cmd_query_manager.lua
+-- A pure “commands” ComputerCraft dashboard:
+-- • Uses the built-in commands API (Command Computer)  
+-- • No HTTP, no RCON  
+-- • Shows server uptime, player list + each player’s session time  
+-- • Press S to schedule a shutdown; displays a big red countdown overlay  
 
--- UTILITIES -----------------------------------------------------------
-
-local function urlEncode(str)
-  if not str then return "" end
-  str = str:gsub("\n", "\r\n")
-  str = str:gsub("([^%w _~%-%.])", function(c)
-    return string.format("%%%02X", string.byte(c))
-  end)
-  return str:gsub(" ", "%%20")
+-------------------------------------------------------------------------------
+-- 1) SETUP
+-------------------------------------------------------------------------------
+-- Must be running on a Command Computer
+if not commands or type(commands.exec) ~= "function" then
+  error("This script requires a Command Computer with the commands API.")
 end
+local cmd = commands
 
-local function prompt(msg)
-  write(msg)
-  return read()
-end
-
-local function safeSleep(sec, mon, notice)
-  if notice and mon then
-    mon.clear(); mon.setCursorPos(1,1)
-    mon.write(notice)
-  end
-  sleep(sec)
-end
-
-local function fetchJSON(url)
-  local resp, err = http.get(url)
-  if not resp then return nil, "HTTP error: "..tostring(err) end
-  local body = resp.readAll() resp.close()
-  local ok, js = pcall(textutils.unserializeJSON, body)
-  if not ok then return nil, "JSON parse error" end
-  return js
-end
-
--- DATE HELPERS --------------------------------------------------------
-
-local function nowISO()
-  return os.date("!%Y-%m-%dT%H:%M:%SZ")
-end
-
-local function monthBounds()
-  local t = os.date("*t"); local y,m = t.year, t.month
-  local start = string.format("%04d-%02d-01T00:00:00Z", y, m)
-  local nm, ny = m+1, y
-  if nm == 13 then nm, ny = 1, y+1 end
-  local nextStart = string.format("%04d-%02d-01T00:00:00Z", ny, nm)
-  return start, nextStart
-end
-
-local function fmtDateDay(iso)
-  local y,mo,d = iso:match("^(%d+)%-(%d+)%-(%d+)")
-  return string.format("%02d/%02d", tonumber(mo), tonumber(d))
-end
-
--- DRAWERS -------------------------------------------------------------
-
-local function drawList(mon, items)
-  mon.clear(); mon.setCursorPos(1,1)
-  mon.write("Upcoming Events:")
-  for i, ev in ipairs(items) do
-    local s = ev.start.dateTime or ev.start.date or ""
-    mon.setCursorPos(1, i+1)
-    mon.write(string.format("%2d) %s - %s",
-      i, fmtDateDay(s), ev.summary or "(no title)")
-    )
-  end
-end
-
-local function drawMonthGrid(mon, items)
-  mon.clear()
-  local w,h = mon.getSize()
-  local counts = {}
-  for _, ev in ipairs(items) do
-    local iso = ev.start.dateTime or ev.start.date or ""
-    local _,_,day = iso:match("^(%d+)%-(%d+)%-(%d+)")
-    if day then counts[tonumber(day)] = (counts[tonumber(day)] or 0) + 1 end
-  end
-
-  local thisStart, nextStart = monthBounds()
-  local t0 = os.time{year=thisStart:sub(1,4),
-                     month=thisStart:sub(6,7),day=1}
-  local wday1 = os.date("*t", t0).wday  -- Sunday=1
-  local daysInMonth = os.date("*t", os.time{year=thisStart:sub(1,4),
-                              month=(thisStart:sub(6,7)+1)%12,day=0}).day
-
-  local cellW = math.floor(w/7)
-  local headers = {"Su","Mo","Tu","We","Th","Fr","Sa"}
-  for i,hd in ipairs(headers) do
-    local x = (i-1)*cellW + 1
-    mon.setCursorPos(x,1); mon.write(hd)
-  end
-
-  local row, col = 2, wday1
-  for day=1, daysInMonth do
-    local x = (col-1)*cellW + 1
-    local txt = tostring(day)
-    if counts[day] and counts[day] > 0 then txt = txt.."*" end
-    mon.setCursorPos(x, row); mon.write(txt)
-    col = col + 1
-    if col > 7 then col = 1; row = row + 1 end
-  end
-end
-
--- MAIN ----------------------------------------------------------------
-
--- 1) Prompts
-term.clear(); term.setCursorPos(1,1)
-print("Multi-Calendar Viewer")
-print("Enter comma-separated Calendar IDs.")
-print("For US Holidays, use: en.usa#holiday@group.v.calendar.google.com")
-write("Calendar IDs: ")
-local rawIds = read()
-
-
-local apiKey = "AIzaSyCDMxDebtI7ciwQAmJ3lXHcbSYt-FwaC_s"
-
-write("Mode (list/month): ")
-local mode = read():lower()
-
--- parse IDs
-local calendarIds = {}
-for id in rawIds:gmatch("[^,]+") do
-  id = id:match("^%s*(.-)%s*$")
-  if #id > 0 then table.insert(calendarIds, id) end
-end
-
--- 2) Monitor
+-- Wrap the first attached monitor
 local mon = peripheral.find("monitor")
-if not mon then error("Attach a monitor and enable HTTP.") end
+if not mon then error("Attach a monitor to display stats.") end
 mon.setTextScale(1)
 
--- 3) Prebuild URLs
-local base = "https://www.googleapis.com/calendar/v3/calendars/"
-local listURLs = {}
-local gridURLs = {}
-local monthStart, monthEnd = monthBounds()
+-- Ensure a playtime objective exists (tracks minutes online)
+pcall(function()
+  cmd.exec("scoreboard objectives add playtime minecraft.custom:minecraft.play_one_minute PlayTime")
+end)
 
-for _, calId in ipairs(calendarIds) do
-  local enc = urlEncode(calId)
-  listURLs[#listURLs+1] = string.format(
-    "%s%s/events?key=%s&timeMin=%s&maxResults=10&singleEvents=true&orderBy=startTime",
-     base, enc, urlEncode(apiKey), urlEncode(nowISO())
-  )
-  gridURLs[#gridURLs+1] = string.format(
-    "%s%s/events?key=%s&timeMin=%s&timeMax=%s&singleEvents=true&orderBy=startTime&maxResults=250",
-     base, enc, urlEncode(apiKey),
-     urlEncode(monthStart), urlEncode(monthEnd)
-  )
+-------------------------------------------------------------------------------
+-- 2) PARSERS & HELPERS
+-------------------------------------------------------------------------------
+-- Format seconds → "Xh Ym Zs"
+local function fmtDuration(sec)
+  local h = math.floor(sec/3600); sec = sec - h*3600
+  local m = math.floor(sec/60);   sec = sec - m*60
+  return string.format("%dh %02dm %02ds", h, m, sec)
 end
 
--- 4) Loop: fetch & merge
-while true do
-  if mode == "month" or mode == "m" then
-    local allItems = {}
-    for _, url in ipairs(gridURLs) do
-      local data, err = fetchJSON(url)
-      if data and data.items then
-        for _,ev in ipairs(data.items) do table.insert(allItems, ev) end
-      end
-    end
-    drawMonthGrid(mon, allItems)
+-- Query server “age” in ticks, convert to seconds
+local function getServerUptime()
+  local out = cmd.exec("time query gametime")
+  -- out ≈ "The time is 123456"
+  local ticks = tonumber(out:match("%d+")) or 0
+  return math.floor(ticks / 20)  -- 20 ticks = 1 second
+end
 
-  else  -- list view
-    local allItems = {}
-    for _, url in ipairs(listURLs) do
-      local data, err = fetchJSON(url)
-      if data and data.items then
-        for _,ev in ipairs(data.items) do table.insert(allItems, ev) end
-      end
+-- Parse `/list` to get an array of player names
+local function getPlayerList()
+  local out = cmd.exec("list")
+  -- out ≈ "There are 2/20 players online: Alice, Bob"
+  local listPart = out:match(":%s*(.*)")
+  local names = {}
+  if listPart then
+    for name in listPart:gmatch("([^,]+)") do
+      table.insert(names, name:match("^%s*(.-)%s*$"))
     end
-    -- sort by start time
-    table.sort(allItems, function(a,b)
-      local ta = a.start.dateTime or (a.start.date.."T00:00:00Z")
-      local tb = b.start.dateTime or (b.start.date.."T00:00:00Z")
-      return ta < tb
-    end)
-    -- take first 10
-    local nextN = {}
-    for i=1, math.min(10,#allItems) do nextN[i] = allItems[i] end
-    drawList(mon, nextN)
+  end
+  return names
+end
+
+-- Query a single player’s playtime (in minutes)
+local function getPlaytime(name)
+  local out = cmd.exec("scoreboard players get " .. name .. " playtime")
+  -- out ≈ "Alice has 5 [in playtime]"
+  return tonumber(out:match(" has (%d+)")) or 0
+end
+
+-------------------------------------------------------------------------------
+-- 3) RENDERERS
+-------------------------------------------------------------------------------
+-- Draw the main dashboard
+local function drawDashboard()
+  local uptimeSec = getServerUptime()
+  local players   = getPlayerList()
+
+  mon.clear()
+  mon.setCursorPos(1,1)
+  mon.write("=== Server Status ===")
+
+  mon.setCursorPos(1,3)
+  mon.write("Uptime: " .. fmtDuration(uptimeSec))
+
+  mon.setCursorPos(1,5)
+  mon.write(string.format("Players Online: %d", #players))
+
+  local y = 7
+  for _, name in ipairs(players) do
+    local mins = getPlaytime(name)
+    mon.setCursorPos(1, y)
+    mon.write(string.format("%s (%s)", name, fmtDuration(mins * 60)))
+    y = y + 1
+  end
+end
+
+-- Draw a full-screen red shutdown countdown
+local shutdownAt
+local function drawShutdownOverlay()
+  if not shutdownAt then return end
+  local now = os.time()
+  if now >= shutdownAt then
+    mon.clear()
+    mon.setCursorPos(1,1)
+    mon.write("SERVER IS SHUTTING DOWN")
+    return
   end
 
-  safeSleep(60, mon, "Refreshing in 60s…")
+  local rem = shutdownAt - now
+  local msg = string.format("SHUTDOWN IN %02d:%02d", math.floor(rem/60), rem%60)
+
+  local w,h = mon.getSize()
+  mon.setBackgroundColor(colors.red)
+  mon.clear()
+  mon.setTextColor(colors.white)
+  mon.setTextScale(2)
+
+  local x = math.floor((w - #msg) / 2) + 1
+  local y = math.floor(h / 2)
+  mon.setCursorPos(x, y)
+  mon.write(msg)
+
+  mon.setTextScale(1)
+  mon.setBackgroundColor(colors.black)
 end
+
+-------------------------------------------------------------------------------
+-- 4) INPUT LOOP
+-------------------------------------------------------------------------------
+-- Press S to schedule shutdown, Q to quit
+local function keyListener()
+  while true do
+    local _, key = os.pullEvent("key")
+    if key == keys.s then
+      term.clear(); term.setCursorPos(1,1)
+      write("Shutdown in how many seconds? ")
+      local d = tonumber(read())
+      if d and d > 0 then
+        shutdownAt     = os.time() + d
+        os.startTimer(d)
+      end
+    elseif key == keys.q then
+      error("Exiting manager.")
+    end
+  end
+end
+
+-------------------------------------------------------------------------------
+-- 5) MAIN LOOP
+-------------------------------------------------------------------------------
+-- Kick off the first periodic update
+os.startTimer(1)
+
+local function mainLoop()
+  while true do
+    local ev, id = os.pullEvent("timer")
+    if shutdownAt and id == shutdownAt then
+      cmd.exec("stop")
+    end
+
+    -- Redraw dashboard + overlay
+    drawDashboard()
+    drawShutdownOverlay()
+
+    -- next update in 1s
+    os.startTimer(1)
+  end
+end
+
+print("Press 'S' to schedule shutdown, 'Q' to quit.")
+parallel.waitForAny(mainLoop, keyListener)
