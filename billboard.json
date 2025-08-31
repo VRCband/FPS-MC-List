@@ -2,20 +2,15 @@
   {
     "message": "Welcome to the server!",
     "Text_Color": "green",
-    "Text_Size": 1.5,
+    "Text_Size": 3,
     "bgColor": "black",
     "duration": 5,
     "monitorID": "all"
   },
   {
-    "imageURL": "https://db.chillboiostudios.com/api/files/pbc_3868000305/8r6eb0h2mhwij7s/output_t9wff500ib.nfp?token=",
-    "duration": 6,
-    "monitorID": "all"
-  },
-  {
     "message": "Use a WayStone to go to Spawn and Shop!",
     "Text_Color": "yellow",
-    "Text_Size": 1,
+    "Text_Size": 4,
     "bgColor": "blue",
     "duration": 4,
     "monitorID": "all"
