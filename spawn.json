@@ -1,0 +1,18 @@
+[
+  {
+    "message": "Welcome to the server!",
+    "Text_Color": "green",
+    "Text_Size": 1,
+    "bgColor": "black",
+    "duration": 5,
+    "monitorID": "all"
+  },
+  {
+    "message": "Use a WayStone to go to Spawn and Shop!",
+    "Text_Color": "yellow",
+    "Text_Size": 1,
+    "bgColor": "blue",
+    "duration": 4,
+    "monitorID": "all"
+  }
+]
