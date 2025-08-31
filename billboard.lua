@@ -43,55 +43,48 @@ local function loadMessages()
 end
 
 
--- Utility: wrap a single paragraph to at most `width` chars
+-- Wrap text into lines of max length `width`
 local function wrapToWidth(text, width)
-  local lines = {}
-  local i = 1
+  local lines, i = {}, 1
   while i <= #text do
-    -- Grab up to width chars
     local chunk = text:sub(i, i + width - 1)
-    -- Find last space in chunk
     local wrapPos = chunk:match("^.*() ") or 0
     if wrapPos > 0 and #chunk == width then
-      -- break at last space
-      lines[#lines + 1] = text:sub(i, i + wrapPos - 2)
+      lines[#lines+1] = text:sub(i, i + wrapPos - 2)
       i = i + wrapPos
     else
-      -- no space, or chunk shorter than width: hard break
-      lines[#lines + 1] = chunk
+      lines[#lines+1] = chunk
       i = i + #chunk
     end
-    -- skip leading spaces on next line
     while text:sub(i, i) == " " do i = i + 1 end
   end
   return lines
 end
 
--- New renderText (or renderLocally) function
+-- Centered render: use this in both sender and receiver
 local function renderTextCentered(monitor, entry)
-  local w, h = monitor.getSize()
+  local w, h    = monitor.getSize()
   local message = entry.message or ""
+  local lines   = wrapToWidth(message, w)
 
-  -- 1) get wrapped lines
-  local lines = wrapToWidth(message, w)
+  -- vertical centering
+  local total  = #lines
+  local startY = math.floor((h - total) / 2) + 1
 
-  -- 2) vertical centering
-  local total = #lines
-  local startY = math.floor(h / 2) - math.floor(total / 2)
-  if startY < 1 then startY = 1 end
-
-  -- 3) paint each line, horizontally centered
-  monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
+  -- prepare screen
   monitor.clear()
+  monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
   monitor.setTextColor(colors[entry.Text_Color] or colors.white)
   monitor.setTextScale(tonumber(entry.Text_Size) or 1)
 
+  -- draw each line, horizontally centered
   for i, line in ipairs(lines) do
     local pad = math.floor((w - #line) / 2)
     monitor.setCursorPos(pad + 1, startY + i - 1)
     monitor.write(line)
   end
 end
+
 
 
 
