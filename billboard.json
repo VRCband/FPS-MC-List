@@ -8,7 +8,7 @@
     "monitorID": "all"
   },
   {
-    "message": "HALLOWEEN EVENT                                       We are now on our Halloween Event!",
+    "message": "HALLOWEEN EVENT /n We are now on our Halloween Event!",
     "Text_Color": "black",
     "Text_Size": 3,
     "bgColor": "orange",
