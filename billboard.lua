@@ -17,7 +17,7 @@ local function centerText(text, width)
     return string.rep(" ", pad) .. text
 end
 
--- Render text message
+-- Render text message with word wrapping
 local function renderText(monitor, entry)
     monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
     monitor.clear()
@@ -25,10 +25,32 @@ local function renderText(monitor, entry)
     monitor.setTextScale(tonumber(entry.Text_Size) or 1)
 
     local w, h = monitor.getSize()
-    local msg = centerText(entry.message, w)
-    monitor.setCursorPos(1, math.floor(h / 2))
-    monitor.write(msg)
+    local message = entry.message or ""
+    local lines = {}
+
+    -- Word wrap logic
+    for word in message:gmatch("%S+") do
+        if #lines == 0 then
+            table.insert(lines, word)
+        else
+            local testLine = lines[#lines] .. " " .. word
+            if #testLine <= w then
+                lines[#lines] = testLine
+            else
+                table.insert(lines, word)
+            end
+        end
+    end
+
+    -- Center vertically
+    local startY = math.max(1, math.floor((h - #lines) / 2))
+    for i, line in ipairs(lines) do
+        local pad = math.floor((w - #line) / 2)
+        monitor.setCursorPos(pad + 1, startY + i - 1)
+        monitor.write(line)
+    end
 end
+
 
 -- Render image from .nfp file with scaling
 local function renderImage(monitor, imagePath)
