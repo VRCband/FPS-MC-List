@@ -116,17 +116,29 @@ local function loadMessages()
   return textutils.unserializeJSON(raw)
 end
 
--- DISPATCH
-local function dispatch(e)
-  e.channel = channel
-  local dur = tonumber(e.duration) or 5
-  if e.monitorID=="local" or e.monitorID=="all" then
-    for _,m in pairs(monitors) do renderLocally(m,e) end
+-- Dispatch a single entry
+local function dispatch(entry)
+  entry.channel = channel
+  -- Default to “all” when monitorID is nil
+  local target   = entry.monitorID or "all"
+  local duration = tonumber(entry.duration) or 5
+
+  if target == "all" or target == "local" then
+    -- render on every attached monitor
+    for _, m in pairs(monitors) do
+      renderLocally(m, entry)
+    end
+
   elseif routerID then
-    rednet.send(routerID,e,"billboard")
+    -- send to router for remote billboards
+    rednet.send(routerID, entry, "billboard")
+  else
+    print("No router found; skipping remote dispatch.")
   end
-  sleep(dur)
+
+  sleep(duration)
 end
+
 
 -- INITIAL FETCH
 print("Fetching initial JSON from "..fullURL)
