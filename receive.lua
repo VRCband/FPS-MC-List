@@ -1,21 +1,21 @@
 -- receive.lua
 -- Self-update URL: https://github.com/VRCband/FPS-MC-List/raw/refs/heads/main/receive.lua
 
--- Open all modem sides
+-- OPEN ALL MODEMS
 for _, side in ipairs({ "left","right","top","bottom","back","front" }) do
   if peripheral.getType(side)=="modem" then rednet.open(side) end
 end
 
--- Self-update listener
+-- SELF-UPDATE LISTENER
 local function listenForUpdate()
   while true do
     local _, msg = rednet.receive("billboard_update")
     if msg=="update" then
-      print("Receiver update signal received.")
+      print("Updating receiver…")
       local name = shell.getRunningProgram()
-      local url  = "https://github.com/VRCband/FPS-MC-List/raw/refs/heads/main/"..name
+      local url  = "https://github.com/VRCband/FPS-MC-List/raw/refs/heads/main/receive.lua"
       if fs.exists(name) then fs.delete(name) end
-      shell.run("wget", url, name)
+      shell.run("wget",url,name)
       print("Restarting updated receiver…")
       shell.run(name)
       return
@@ -23,9 +23,8 @@ local function listenForUpdate()
   end
 end
 
--- CONFIG PERSISTENCE
-local cfgFile = "receiver.cfg"
-local lastChan
+-- LOAD LAST CHANNEL
+local cfgFile, lastChan = "receiver.cfg"
 if fs.exists(cfgFile) then
   local f = fs.open(cfgFile,"r")
   local ok,data = pcall(textutils.unserialize, f.readAll())
@@ -36,40 +35,42 @@ end
 -- PROMPT WITH TIMEOUT
 local function promptDefault(prompt, default)
   local timer = os.startTimer(5)
-  write(string.format("%s [%s]: ",prompt,default or ""))
+  write(string.format("%s [%s]: ", prompt, default or ""))
   while true do
-    local e,p = os.pullEvent()
-    if e=="timer" and p==timer then return nil end
-    if e=="char" or e=="key" then
+    local ev,p = os.pullEvent()
+    if ev=="timer" and p==timer then return nil end
+    if ev=="char" or ev=="key" then
       local input = read()
       return input~="" and input or nil
     end
   end
 end
 
--- CHANNEL
+-- CHANNEL SELECTION
 term.clear(); term.setCursorPos(1,1)
 local ci = promptDefault("Enter channel", lastChan)
 local channel = ci or lastChan
 if not channel then error("No channel provided.") end
 
--- SAVE CONFIG
-local f = fs.open(cfgFile,"w")
-f.write(textutils.serialize({ channel=channel }))
-f.close()
+-- SAVE CHANNEL
+do
+  local f = fs.open(cfgFile,"w")
+  f.write(textutils.serialize({ channel=channel }))
+  f.close()
+end
 
 local proto = "billboard_"..channel
 
--- DISCOVER MONITORS
+-- DISCOVER ALL MONITORS
 local monitors = {}
-for _,name in ipairs(peripheral.getNames()) do
+for _, name in ipairs(peripheral.getNames()) do
   if peripheral.getType(name)=="monitor" then
-    monitors[name]=peripheral.wrap(name)
+    monitors[name] = peripheral.wrap(name)
   end
 end
-if next(monitors)==nil then error("No monitors attached") end
+if not next(monitors) then error("No monitors attached") end
 
--- RENDER HELPERS (same as before)
+-- RENDER HELPERS (image + wrapped text)
 local function renderImage(url)
   local path="temp_image.nfp"
   if fs.exists(path) then fs.delete(path) end
@@ -116,10 +117,10 @@ local function renderText(e)
   end
 end
 
--- LISTEN LOOP
+-- MAIN LOOP
 local function mainLoop()
   while true do
-    local _,msg=rednet.receive(proto)
+    local _,msg = rednet.receive(proto)
     if type(msg)=="table" then
       if msg.imageURL then renderImage(msg.imageURL)
       elseif msg.message then renderText(msg) end
