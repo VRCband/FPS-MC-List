@@ -55,36 +55,51 @@ local function loadMessages()
     return data
 end
 
--- Main loop
-while true do
-    local messages = loadMessages()
-    for _, entry in ipairs(messages) do
-        local target = entry.monitorID or "all"
-        local duration = tonumber(entry.duration) or 5
+-- Billboard loop
+local function runBillboard()
+    while true do
+        local messages = loadMessages()
+        for _, entry in ipairs(messages) do
+            local target = entry.monitorID or "all"
+            local duration = tonumber(entry.duration) or 5
 
-        if entry.imageURL then
-            local imagePath = "temp_image.nfp"
-            if fs.exists(imagePath) then fs.delete(imagePath) end
-            shell.run("wget", entry.imageURL, imagePath)
-            for id, monitor in pairs(monitors) do
-                if target == "all" or id == target then
-                    renderImage(monitor, imagePath)
+            if entry.imageURL then
+                local imagePath = "temp_image.nfp"
+                if fs.exists(imagePath) then fs.delete(imagePath) end
+                shell.run("wget", entry.imageURL, imagePath)
+                for id, monitor in pairs(monitors) do
+                    if target == "all" or id == target then
+                        renderImage(monitor, imagePath)
+                    end
+                end
+                fs.delete(imagePath)
+            elseif entry.message then
+                for id, monitor in pairs(monitors) do
+                    if target == "all" or id == target then
+                        renderText(monitor, entry)
+                    end
                 end
             end
-            fs.delete(imagePath)
-        elseif entry.message then
-            for id, monitor in pairs(monitors) do
-                if target == "all" or id == target then
-                    renderText(monitor, entry)
-                end
-            end
+
+            sleep(duration)
         end
 
-        sleep(duration)
+        -- Refresh JSON from remote source (overwrite)
+        if fs.exists(jsonPath) then fs.delete(jsonPath) end
+        shell.run("wget", jsonURL, jsonPath)
     end
-
-    -- Refresh JSON from remote source (overwrite)
-    if fs.exists(jsonPath) then fs.delete(jsonPath) end
-    shell.run("wget", jsonURL, jsonPath)
 end
 
+-- Shutdown listener
+local function listenForShutdown()
+    while true do
+        local event, key = os.pullEvent("key")
+        if key == keys.h then
+            print("Shutdown triggered by keypress.")
+            os.shutdown()
+        end
+    end
+end
+
+-- Run both billboard and shutdown listener in parallel
+parallel.waitForAny(runBillboard, listenForShutdown)
