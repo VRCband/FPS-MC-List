@@ -17,7 +17,7 @@ local function centerText(text, width)
     return string.rep(" ", pad) .. text
 end
 
--- Render text message with word wrapping
+-- Render text message with word wrapping and centered block
 local function renderText(monitor, entry)
     monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
     monitor.clear()
@@ -42,8 +42,11 @@ local function renderText(monitor, entry)
         end
     end
 
-    -- Center vertically
-    local startY = math.max(1, math.floor((h - #lines) / 2))
+    -- Center vertically so middle line is at screen center
+    local totalLines = #lines
+    local centerLine = math.floor(h / 2)
+    local startY = centerLine - math.floor(totalLines / 2)
+
     for i, line in ipairs(lines) do
         local pad = math.floor((w - #line) / 2)
         monitor.setCursorPos(pad + 1, startY + i - 1)
