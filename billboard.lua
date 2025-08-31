@@ -1,8 +1,9 @@
 -- CONFIG
 local jsonPath = "billboard.json"
 local jsonURL = "https://yourdomain.com/billboard.json"
+local routerID = rednet.lookup("billboard", "router")  -- Optional: set manually if needed
 
--- Open all modem types
+-- Open all modem sides
 for _, side in ipairs({"left", "right", "top", "bottom", "back", "front"}) do
     if peripheral.getType(side) == "modem" then
         rednet.open(side)
@@ -17,34 +18,8 @@ for _, name in ipairs(peripheral.getNames()) do
     end
 end
 
--- Load JSON from remote
-local function loadMessages()
-    if fs.exists(jsonPath) then fs.delete(jsonPath) end
-    shell.run("wget", jsonURL, jsonPath)
-    local file = fs.open(jsonPath, "r")
-    local raw = file.readAll()
-    file.close()
-    return textutils.unserializeJSON(raw)
-end
-
--- Send or render message
-local function dispatch(entry)
-    local target = entry.monitorID or "all"
-    local duration = tonumber(entry.duration) or 5
-
-    if target == "local" then
-        for _, monitor in pairs(monitors) do
-            renderLocally(monitor, entry)
-        end
-    else
-        rednet.broadcast(entry, "billboard")
-    end
-
-    sleep(duration)
-end
-
 -- Local rendering fallback
-function renderLocally(monitor, entry)
+local function renderLocally(monitor, entry)
     monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
     monitor.clear()
     monitor.setTextColor(colors[entry.Text_Color] or colors.white)
@@ -78,6 +53,36 @@ function renderLocally(monitor, entry)
     end
 end
 
+-- Load JSON from remote source
+local function loadMessages()
+    if fs.exists(jsonPath) then fs.delete(jsonPath) end
+    shell.run("wget", jsonURL, jsonPath)
+    local file = fs.open(jsonPath, "r")
+    local raw = file.readAll()
+    file.close()
+    return textutils.unserializeJSON(raw)
+end
+
+-- Dispatch message
+local function dispatch(entry)
+    local target = entry.monitorID or "all"
+    local duration = tonumber(entry.duration) or 5
+
+    if target == "local" then
+        for _, monitor in pairs(monitors) do
+            renderLocally(monitor, entry)
+        end
+    elseif entry.broadcast == true then
+        rednet.broadcast(entry, "billboard")
+    elseif routerID then
+        rednet.send(routerID, entry, "billboard")
+    else
+        rednet.broadcast(entry, "billboard")
+    end
+
+    sleep(duration)
+end
+
 -- Main loop
 while true do
     local messages = loadMessages()
@@ -85,3 +90,4 @@ while true do
         dispatch(entry)
     end
 end
+
