@@ -122,19 +122,36 @@ end
 
 -- DISPATCH
 local routerID = rednet.lookup("billboard","router")
-local function dispatch(e)
-  e.channel = channel
-  local target = e.monitorID or "all"
-  local dur    = tonumber(e.duration) or 5
+-- Dispatch a single entry
+local function dispatch(entry)
+  entry.channel = channel
+  local target   = entry.monitorID or "all"
+  local duration = tonumber(entry.duration) or 5
 
-  if target=="all" or target=="local" then
-    for _,m in pairs(monitors) do renderLocally(m,e) end
-  elseif routerID then
-    rednet.send(routerID, e, "billboard")
+  -- 1) Always render local if target=="all" or "local"
+  if target == "all" or target == "local" then
+    for _, m in pairs(monitors) do
+      renderLocally(m, entry)
+    end
   end
 
-  sleep(dur)
+  -- 2) Forward remotely if target=="all" or is a specific ID
+  if target == "all" then
+    if routerID then
+      rednet.send(routerID, entry, "billboard")
+    end
+
+  elseif target ~= "local" then
+    if routerID then
+      rednet.send(routerID, entry, "billboard")
+    else
+      print("No router found; cannot send to remote monitor '"..tostring(target).."'.")
+    end
+  end
+
+  sleep(duration)
 end
+
 
 -- INITIAL JSON FETCH
 print("Fetching initial JSON → "..fullJSON)
