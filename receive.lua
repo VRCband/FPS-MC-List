@@ -55,7 +55,19 @@ local function renderImage(imageURL)
   end
 end
 
--- Helper: wrap a single paragraph to max `width` characters
+-- Helper: split on literal sep
+local function split(str, sep)
+  local parts, last = {}, 1
+  sep = sep:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])","%%%1")
+  for s,e in function() return str:find(sep, last, true) end do
+    parts[#parts+1] = str:sub(last, s-1)
+    last = e + 1
+  end
+  parts[#parts+1] = str:sub(last)
+  return parts
+end
+
+-- Helper: wrap text to width
 local function wrapToWidth(text, width)
   local lines, i = {}, 1
   while i <= #text do
@@ -68,55 +80,53 @@ local function wrapToWidth(text, width)
       lines[#lines+1] = chunk
       i = i + #chunk
     end
-    while text:sub(i, i) == " " do i = i + 1 end
+    while text:sub(i,i) == " " do i = i + 1 end
   end
   return lines
 end
 
--- Helper: split a string on a literal separator
-local function split(str, sep)
-  local parts, last = {}, 1
-  sep = sep:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])","%%%1")
-  for s, e in function() return str:find(sep, last, true) end do
-    parts[#parts+1] = str:sub(last, s-1)
-    last = e + 1
-  end
-  parts[#parts+1] = str:sub(last)
-  return parts
-end
-
--- Updated renderTextCentered with `/n` support
+-- Replace your existing renderTextCentered with this:
 local function renderTextCentered(monitor, entry)
   local w, h    = monitor.getSize()
   local raw     = entry.message or ""
-  local paragraphs = split(raw, "/n")
-  local lines = {}
+  local paras   = split(raw, "/n")
+  local lines   = {}
 
-  -- wrap each paragraph, preserve blank line between
-  for pi, para in ipairs(paragraphs) do
-    local wrapped = wrapToWidth(para, w)
-    for _, line in ipairs(wrapped) do
-      lines[#lines+1] = line
-    end
-    if pi < #paragraphs then
-      lines[#lines+1] = ""  -- explicit blank line
+  for _, para in ipairs(paras) do
+    -- Heading?
+    local head = para:match("^# (.+)")
+    if head then
+      lines[#lines+1] = head:upper()
+      lines[#lines+1] = ""
+    else
+      -- Bold → UPPERCASE
+      para = para:gsub("%*%*(.-)%*%*", function(s) return s:upper() end)
+      -- Italic → remove stars
+      para = para:gsub("%*(.-)%*", "%1")
+      -- Wrap
+      for _,l in ipairs(wrapToWidth(para, w)) do
+        lines[#lines+1] = l
+      end
+      lines[#lines+1] = ""
     end
   end
 
-  -- center vertically
+  -- Remove trailing blank
+  if lines[#lines] == "" then lines[#lines] = nil end
+
+  -- Center vertically
   local total  = #lines
   local startY = math.floor((h - total) / 2) + 1
 
-  -- set background *before* clearing
-  local bg = colors[entry.bgColor] or colors.black
-  monitor.setBackgroundColor(bg)
+  -- Paint background first
+  monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
   monitor.clear()
 
-  -- text settings
+  -- Text styling
   monitor.setTextColor(colors[entry.Text_Color] or colors.white)
   monitor.setTextScale(tonumber(entry.Text_Size) or 1)
 
-  -- draw each line, horizontally centered
+  -- Draw lines centered
   for i, line in ipairs(lines) do
     local pad = math.floor((w - #line) / 2)
     monitor.setCursorPos(pad + 1, startY + i - 1)

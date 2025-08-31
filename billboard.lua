@@ -42,7 +42,19 @@ local function loadMessages()
   return textutils.unserializeJSON(raw)
 end
 
--- Wrap helper (unchanged)
+-- Helper: split on literal sep
+local function split(str, sep)
+  local parts, last = {}, 1
+  sep = sep:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])","%%%1")
+  for s,e in function() return str:find(sep, last, true) end do
+    parts[#parts+1] = str:sub(last, s-1)
+    last = e + 1
+  end
+  parts[#parts+1] = str:sub(last)
+  return parts
+end
+
+-- Helper: wrap text to width
 local function wrapToWidth(text, width)
   local lines, i = {}, 1
   while i <= #text do
@@ -55,37 +67,60 @@ local function wrapToWidth(text, width)
       lines[#lines+1] = chunk
       i = i + #chunk
     end
-    while text:sub(i, i) == " " do i = i + 1 end
+    while text:sub(i,i) == " " do i = i + 1 end
   end
   return lines
 end
 
--- Corrected renderTextCentered
+-- Replace your existing renderTextCentered with this:
 local function renderTextCentered(monitor, entry)
   local w, h    = monitor.getSize()
-  local msg     = entry.message or ""
-  local lines   = wrapToWidth(msg, w)
+  local raw     = entry.message or ""
+  local paras   = split(raw, "/n")
+  local lines   = {}
 
-  -- 1) set new background, then clear entire screen
-  local bg = colors[entry.bgColor] or colors.black
-  monitor.setBackgroundColor(bg)
-  monitor.clear()
+  for _, para in ipairs(paras) do
+    -- Heading?
+    local head = para:match("^# (.+)")
+    if head then
+      lines[#lines+1] = head:upper()
+      lines[#lines+1] = ""
+    else
+      -- Bold → UPPERCASE
+      para = para:gsub("%*%*(.-)%*%*", function(s) return s:upper() end)
+      -- Italic → remove stars
+      para = para:gsub("%*(.-)%*", "%1")
+      -- Wrap
+      for _,l in ipairs(wrapToWidth(para, w)) do
+        lines[#lines+1] = l
+      end
+      lines[#lines+1] = ""
+    end
+  end
 
-  -- 2) configure text color & scale
-  monitor.setTextColor(colors[entry.Text_Color] or colors.white)
-  monitor.setTextScale(tonumber(entry.Text_Size) or 1)
+  -- Remove trailing blank
+  if lines[#lines] == "" then lines[#lines] = nil end
 
-  -- 3) compute vertical start so text block is dead-centered
+  -- Center vertically
   local total  = #lines
   local startY = math.floor((h - total) / 2) + 1
 
-  -- 4) draw each line, horizontally centered
+  -- Paint background first
+  monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
+  monitor.clear()
+
+  -- Text styling
+  monitor.setTextColor(colors[entry.Text_Color] or colors.white)
+  monitor.setTextScale(tonumber(entry.Text_Size) or 1)
+
+  -- Draw lines centered
   for i, line in ipairs(lines) do
-    local pad = math.floor((w - #line) / 2) + 1
-    monitor.setCursorPos(pad, startY + i - 1)
+    local pad = math.floor((w - #line) / 2)
+    monitor.setCursorPos(pad + 1, startY + i - 1)
     monitor.write(line)
   end
 end
+
 
 
 
