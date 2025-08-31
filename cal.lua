@@ -1,123 +1,112 @@
--- cmd_query_manager.lua
--- A pure “commands” ComputerCraft dashboard:
--- • Uses the built-in commands API (Command Computer)  
--- • No HTTP, no RCON  
--- • Shows server uptime, player list + each player’s session time  
--- • Press S to schedule a shutdown; displays a big red countdown overlay  
+-- cmd_stats_board.lua
+-- A pure-commands dashboard for ComputerCraft Command Computers.
+-- No RCON, no HTTP. Uses only `commands.exec(...)` to gather data:
+--  • Server uptime via `/time query gametime`
+--  • Player count and list via `/list`
+--  • Per-player session time via a `playtime` scoreboard (stat.play_one_minute)
+--  • Schedule a `/stop` shutdown with a countdown overlay
+--  • Customizable text scale (e.g. 4)
 
 -------------------------------------------------------------------------------
 -- 1) SETUP
 -------------------------------------------------------------------------------
--- Must be running on a Command Computer
 if not commands or type(commands.exec) ~= "function" then
-  error("This script requires a Command Computer with the commands API.")
+  error("This script requires a Command Computer (commands API).")
 end
 local cmd = commands
 
--- Wrap the first attached monitor
-local mon = peripheral.find("monitor")
-if not mon then error("Attach a monitor to display stats.") end
-mon.setTextScale(1)
+-- Prompt for text scale
+term.clear()
+term.setCursorPos(1,1)
+write("Enter text scale (1-5, default 1): ")
+local textScale = tonumber(read()) or 1
 
--- Ensure a playtime objective exists (tracks minutes online)
+-- Wrap and configure the monitor
+local mon = peripheral.find("monitor")
+if not mon then error("Attach a monitor for display.") end
+mon.setTextScale(textScale)
+
+-- Ensure the playtime objective exists (tracks minutes automatically)
 pcall(function()
   cmd.exec("scoreboard objectives add playtime minecraft.custom:minecraft.play_one_minute PlayTime")
 end)
 
--- cmd_query_manager.lua  (patched)
+-- Shutdown state
+local shutdownAt
 
--- … at the top you already did:
--- local cmd = commands
--- local mon = peripheral.find("monitor")
--- …
-
--- 2) PARSERS & HELPERS
 -------------------------------------------------------------------------------
-
--- Format seconds → "Xh Ym Zs" (unchanged)
+-- 2) HELPERS
+-------------------------------------------------------------------------------
+-- Format seconds → "Xh Ym Zs"
 local function fmtDuration(sec)
   local h = math.floor(sec/3600); sec = sec - h*3600
   local m = math.floor(sec/60);   sec = sec - m*60
-  return string.format("%dh %02dm %02ds", h, m, sec)
+  local s = sec
+  return string.format("%dh %02dm %02ds", h, m, s)
 end
 
--- Query server “age” in ticks, convert to seconds
-local function getServerUptime()
+-- Query server uptime (ticks → seconds)
+local function getUptimeSec()
   local ok, out = cmd.exec("time query gametime")
-  if not ok or type(out) ~= "string" then
-    return 0
-  end
+  if not ok or type(out) ~= "string" then return 0 end
   local ticks = tonumber(out:match("%d+")) or 0
   return math.floor(ticks / 20)
 end
 
--- Parse `/list` to get an array of player names
+-- Get an array of online player names
 local function getPlayerList()
   local ok, out = cmd.exec("list")
-  if not ok or type(out) ~= "string" then
-    return {}
-  end
-
-  -- out looks like: "There are 2/20 players online: Alice, Bob"
-  local listPart = out:match(":%s*(.*)")
-  if not listPart then return {} end
-
+  if not ok or type(out) ~= "string" then return {} end
+  -- "There are X/Y players online: Alice, Bob"
+  local part = out:match(":%s*(.*)")
+  if not part or part == "" then return {} end
   local names = {}
-  for name in listPart:gmatch("([^,]+)") do
+  for name in part:gmatch("([^,]+)") do
     names[#names+1] = name:match("^%s*(.-)%s*$")
   end
   return names
 end
 
--- Query a single player’s playtime (in minutes)
-local function getPlaytime(name)
+-- Query a player's playtime in minutes, convert → seconds
+local function getPlayerPlaytime(name)
   local ok, out = cmd.exec("scoreboard players get " .. name .. " playtime")
-  if not ok or type(out) ~= "string" then
-    return 0
-  end
-
-  -- out ≈ "Alice has 5 [in playtime]"
-  local score = tonumber(out:match(" has (%d+) ")) or 0
-  return score
+  if not ok or type(out) ~= "string" then return 0 end
+  local mins = tonumber(out:match(" has (%d+) ")) or 0
+  return mins * 60
 end
 
-
 -------------------------------------------------------------------------------
--- 3) RENDERERS
+-- 3) RENDERING
 -------------------------------------------------------------------------------
--- Draw the main dashboard
 local function drawDashboard()
-  local uptimeSec = getServerUptime()
-  local players   = getPlayerList()
+  local uptime = getUptimeSec()
+  local players = getPlayerList()
 
   mon.clear()
   mon.setCursorPos(1,1)
   mon.write("=== Server Status ===")
 
   mon.setCursorPos(1,3)
-  mon.write("Uptime: " .. fmtDuration(uptimeSec))
+  mon.write("Uptime: " .. fmtDuration(uptime))
 
   mon.setCursorPos(1,5)
-  mon.write(string.format("Players Online: %d", #players))
+  mon.write("Players: " .. #players)
 
   local y = 7
   for _, name in ipairs(players) do
-    local mins = getPlaytime(name)
+    local pt = getPlayerPlaytime(name)
     mon.setCursorPos(1, y)
-    mon.write(string.format("%s (%s)", name, fmtDuration(mins * 60)))
+    mon.write(string.format("%s (%s)", name, fmtDuration(pt)))
     y = y + 1
   end
 end
 
--- Draw a full-screen red shutdown countdown
-local shutdownAt
 local function drawShutdownOverlay()
   if not shutdownAt then return end
   local now = os.time()
   if now >= shutdownAt then
-    mon.clear()
-    mon.setCursorPos(1,1)
-    mon.write("SERVER IS SHUTTING DOWN")
+    -- execute the stop command once countdown reaches zero
+    cmd.exec("stop")
     return
   end
 
@@ -128,34 +117,30 @@ local function drawShutdownOverlay()
   mon.setBackgroundColor(colors.red)
   mon.clear()
   mon.setTextColor(colors.white)
-  mon.setTextScale(2)
-
-  local x = math.floor((w - #msg) / 2) + 1
-  local y = math.floor(h / 2)
-  mon.setCursorPos(x, y)
+  mon.setTextScale(textScale * 2)  -- make overlay text larger
+  mon.setCursorPos(math.floor((w - #msg)/2)+1, math.floor(h/2))
   mon.write(msg)
-
-  mon.setTextScale(1)
+  mon.setTextScale(textScale)
   mon.setBackgroundColor(colors.black)
 end
 
 -------------------------------------------------------------------------------
--- 4) INPUT LOOP
+-- 4) INPUT & TIMERS
 -------------------------------------------------------------------------------
--- Press S to schedule shutdown, Q to quit
+-- Press S to schedule shutdown; Q to quit
 local function keyListener()
   while true do
     local _, key = os.pullEvent("key")
     if key == keys.s then
       term.clear(); term.setCursorPos(1,1)
-      write("Shutdown in how many seconds? ")
+      write("Shutdown in seconds: ")
       local d = tonumber(read())
       if d and d > 0 then
-        shutdownAt     = os.time() + d
-        os.startTimer(d)
+        shutdownAt = os.time() + d
+        os.startTimer(1)  -- kick off overlay/tick loop
       end
     elseif key == keys.q then
-      error("Exiting manager.")
+      error("Exiting stats board")
     end
   end
 end
@@ -163,21 +148,14 @@ end
 -------------------------------------------------------------------------------
 -- 5) MAIN LOOP
 -------------------------------------------------------------------------------
--- Kick off the first periodic update
+-- Start the periodic update
 os.startTimer(1)
-
 local function mainLoop()
   while true do
     local ev, id = os.pullEvent("timer")
-    if shutdownAt and id == shutdownAt then
-      cmd.exec("stop")
-    end
-
-    -- Redraw dashboard + overlay
+    -- redraw every second
     drawDashboard()
     drawShutdownOverlay()
-
-    -- next update in 1s
     os.startTimer(1)
   end
 end
