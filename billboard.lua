@@ -1,16 +1,23 @@
 -- billboard.lua
--- Prompt for channel
+-- Prompt for channel and JSON file
 term.clear()
 term.setCursorPos(1,1)
-print("Billboard Sender")
+print("Billboard Sender Setup")
+
+-- 1) Channel
 write("Enter channel name: ")
 local channel = read()
 
+-- 2) JSON filename
+write("Enter JSON filename (e.g. lobby.json): ")
+local jsonFile = read()
+
 -- CONFIG
 local jsonPath = "billboard.json"
-local jsonURL  = "https://yourdomain.com/billboard.json"
+local baseURL  = "https://github.com/VRCband/FPS-MC-List/raw/refs/heads/main/"
+local jsonURL  = baseURL .. jsonFile
 
--- Open all modem types
+-- Open all modem sides
 for _, side in ipairs({"left","right","top","bottom","back","front"}) do
   if peripheral.getType(side) == "modem" then
     rednet.open(side)
@@ -29,14 +36,14 @@ end
 local function loadMessages()
   if fs.exists(jsonPath) then fs.delete(jsonPath) end
   shell.run("wget", jsonURL, jsonPath)
-  local file = fs.open(jsonPath, "r")
-  local raw  = file.readAll()
-  file.close()
+  local f   = fs.open(jsonPath, "r")
+  local raw = f.readAll()
+  f.close()
   return textutils.unserializeJSON(raw)
 end
 
 -- Local rendering fallback
-function renderLocally(monitor, entry)
+local function renderLocally(monitor, entry)
   monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
   monitor.clear()
   monitor.setTextColor(colors[entry.Text_Color] or colors.white)
@@ -50,9 +57,9 @@ function renderLocally(monitor, entry)
     if #lines == 0 then
       table.insert(lines, word)
     else
-      local testLine = lines[#lines] .. " " .. word
-      if #testLine <= w then
-        lines[#lines] = testLine
+      local test = lines[#lines] .. " " .. word
+      if #test <= w then
+        lines[#lines] = test
       else
         table.insert(lines, word)
       end
@@ -70,11 +77,11 @@ function renderLocally(monitor, entry)
   end
 end
 
--- Dispatch or broadcast
+-- Dispatch: tag with channel, render local or broadcast
 local function dispatch(entry)
-  entry.channel = channel              -- tag with our channel
-  local target  = entry.monitorID or "all"
-  local duration= tonumber(entry.duration) or 5
+  entry.channel = channel
+  local target   = entry.monitorID or "all"
+  local duration = tonumber(entry.duration) or 5
 
   if target == "local" then
     for _, m in pairs(monitors) do
