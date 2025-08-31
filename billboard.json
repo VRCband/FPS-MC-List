@@ -10,7 +10,7 @@
   {
     "message": "Use a WayStone to go to Spawn and Shop!",
     "Text_Color": "yellow",
-    "Text_Size": 4,
+    "Text_Size": 2,
     "bgColor": "blue",
     "duration": 4,
     "monitorID": "all"
