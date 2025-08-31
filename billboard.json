@@ -8,27 +8,16 @@
     "monitorID": "all"
   },
   {
-    "message": "Paradigm restart in 10 minutes!",
-    "Text_Color": "red",
-    "Text_Size": 2,
-    "bgColor": "black",
-    "duration": 7,
-    "monitorID": "left_monitor"
+    "imageURL": "https://db.chillboiostudios.com/api/files/pbc_3868000305/8r6eb0h2mhwij7s/output_t9wff500ib.nfp?token=",
+    "duration": 6,
+    "monitorID": "all"
   },
   {
-    "message": "Use /warp market to trade!",
+    "message": "Use a WayStone to go to Spawn and Shop!",
     "Text_Color": "yellow",
     "Text_Size": 1,
     "bgColor": "blue",
     "duration": 4,
-    "monitorID": "right_monitor"
-  },
-  {
-    "message": "Check your mail at the post office!",
-    "Text_Color": "white",
-    "Text_Size": 1.2,
-    "bgColor": "purple",
-    "duration": 6,
     "monitorID": "all"
   }
 ]
