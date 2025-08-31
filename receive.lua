@@ -55,11 +55,11 @@ local function renderImage(imageURL)
   end
 end
 
--- Wrap text into lines of max length `width`
+-- Wrap helper (unchanged)
 local function wrapToWidth(text, width)
   local lines, i = {}, 1
   while i <= #text do
-    local chunk = text:sub(i, i + width - 1)
+    local chunk   = text:sub(i, i + width - 1)
     local wrapPos = chunk:match("^.*() ") or 0
     if wrapPos > 0 and #chunk == width then
       lines[#lines+1] = text:sub(i, i + wrapPos - 2)
@@ -73,29 +73,33 @@ local function wrapToWidth(text, width)
   return lines
 end
 
--- Centered render: use this in both sender and receiver
+-- Corrected renderTextCentered
 local function renderTextCentered(monitor, entry)
   local w, h    = monitor.getSize()
-  local message = entry.message or ""
-  local lines   = wrapToWidth(message, w)
+  local msg     = entry.message or ""
+  local lines   = wrapToWidth(msg, w)
 
-  -- vertical centering
-  local total  = #lines
-  local startY = math.floor((h - total) / 2) + 1
-
-  -- prepare screen
+  -- 1) set new background, then clear entire screen
+  local bg = colors[entry.bgColor] or colors.black
+  monitor.setBackgroundColor(bg)
   monitor.clear()
-  monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
+
+  -- 2) configure text color & scale
   monitor.setTextColor(colors[entry.Text_Color] or colors.white)
   monitor.setTextScale(tonumber(entry.Text_Size) or 1)
 
-  -- draw each line, horizontally centered
+  -- 3) compute vertical start so text block is dead-centered
+  local total  = #lines
+  local startY = math.floor((h - total) / 2) + 1
+
+  -- 4) draw each line, horizontally centered
   for i, line in ipairs(lines) do
-    local pad = math.floor((w - #line) / 2)
-    monitor.setCursorPos(pad + 1, startY + i - 1)
+    local pad = math.floor((w - #line) / 2) + 1
+    monitor.setCursorPos(pad, startY + i - 1)
     monitor.write(line)
   end
 end
+
 
 
 
