@@ -1,14 +1,21 @@
 -- Open all modem types
-for _, side in ipairs({"left", "right", "top", "bottom", "back", "front"}) do
+for _, side in ipairs({ "left", "right", "top", "bottom", "back", "front" }) do
     if peripheral.getType(side) == "modem" then
         rednet.open(side)
     end
 end
 
-local monitor = peripheral.find("monitor")
-if not monitor then error("No monitor attached") end
+-- Discover all monitors
+local monitors = {}
+for _, name in ipairs(peripheral.getNames()) do
+    if peripheral.getType(name) == "monitor" then
+        monitors[name] = peripheral.wrap(name)
+    end
+end
 
--- Render image from .nfp file
+if next(monitors) == nil then error("No monitors attached") end
+
+-- Render image from .nfp file to all monitors
 local function renderImage(imageURL)
     local path = "temp_image.nfp"
     if fs.exists(path) then fs.delete(path) end
@@ -16,68 +23,73 @@ local function renderImage(imageURL)
     local image = paintutils.loadImage(path)
     if not image then return end
 
-    local mw, mh = monitor.getSize()
-    local iw = #image[1]
-    local ih = #image
+    for _, monitor in pairs(monitors) do
+        local mw, mh = monitor.getSize()
+        local iw = #image[1]
+        local ih = #image
 
-    if iw > mw or ih > mh then
-        local scaleX = mw / iw
-        local scaleY = mh / ih
-        local scale = math.min(scaleX, scaleY)
-        local scaled = {}
+        local scaledImage = image
+        if iw > mw or ih > mh then
+            local scaleX = mw / iw
+            local scaleY = mh / ih
+            local scale = math.min(scaleX, scaleY)
+            local scaled = {}
 
-        for y = 1, mh do
-            local row = {}
-            for x = 1, mw do
-                local srcX = math.floor(x / scale)
-                local srcY = math.floor(y / scale)
-                srcX = math.max(1, math.min(srcX, iw))
-                srcY = math.max(1, math.min(srcY, ih))
-                row[x] = image[srcY][srcX]
+            for y = 1, mh do
+                local row = {}
+                for x = 1, mw do
+                    local srcX = math.floor(x / scale)
+                    local srcY = math.floor(y / scale)
+                    srcX = math.max(1, math.min(srcX, iw))
+                    srcY = math.max(1, math.min(srcY, ih))
+                    row[x] = image[srcY][srcX]
+                end
+                scaled[y] = row
             end
-            scaled[y] = row
+
+            scaledImage = scaled
         end
 
-        image = scaled
+        monitor.setBackgroundColor(colors.black)
+        monitor.clear()
+        paintutils.drawImage(scaledImage, 1, 1)
     end
-
-    monitor.setBackgroundColor(colors.black)
-    monitor.clear()
-    paintutils.drawImage(image, 1, 1)
 end
 
--- Render wrapped text
+-- Render wrapped text to all monitors
 local function renderText(entry)
-    monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
-    monitor.clear()
-    monitor.setTextColor(colors[entry.Text_Color] or colors.white)
-    monitor.setTextScale(tonumber(entry.Text_Size) or 1)
+    for _, monitor in pairs(monitors) do
+        monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
+        monitor.clear()
+        monitor.setTextColor(colors[entry.Text_Color] or colors.white)
+        monitor.setTextScale(tonumber(entry.Text_Size) or 1)
 
-    local w, h = monitor.getSize()
-    local message = entry.message or ""
-    local lines = {}
+        local w, h = monitor.getSize()
+        local message = entry.message or ""
+        local lines = {}
 
-    for word in message:gmatch("%S+") do
-        if #lines == 0 then
-            table.insert(lines, word)
-        else
-            local testLine = lines[#lines] .. " " .. word
-            if #testLine <= w then
-                lines[#lines] = testLine
-            else
+        for word in message:gmatch("%S+") do
+            if #lines == 0 then
                 table.insert(lines, word)
+            else
+                local testLine = lines[#lines] .. " " .. word
+                if #testLine <= w then
+                    lines[#lines] = testLine
+                else
+                    table.insert(lines, word)
+                end
             end
         end
-    end
 
-    local totalLines = #lines
-    local centerLine = math.floor(h / 2)
-    local startY = centerLine - math.floor(totalLines / 2)
+        local totalLines = #lines
+        local centerLine = math.floor(h / 2)
+        local startY = centerLine - math.floor(totalLines / 2)
 
-    for i, line in ipairs(lines) do
-        local pad = math.floor((w - #line) / 2)
-        monitor.setCursorPos(pad + 1, startY + i - 1)
-        monitor.write(line)
+        for i, line in ipairs(lines) do
+            local pad = math.floor((w - #line) / 2)
+            monitor.setCursorPos(pad + 1, startY + i - 1)
+            monitor.write(line)
+        end
     end
 end
 
