@@ -1,6 +1,6 @@
 -- CONFIG
 local jsonPath = "billboard.json"
-local jsonURL = "https://github.com/VRCband/FPS-MC-List/raw/refs/heads/main/billboard.json"  -- Replace with your actual URL
+local jsonURL = "https://github.com/VRCband/FPS-MC-List/raw/refs/heads/main/billboard.json"
 
 -- Discover all monitors
 local monitors = {}
@@ -17,8 +17,8 @@ local function centerText(text, width)
     return string.rep(" ", pad) .. text
 end
 
--- Render one message to one monitor
-local function renderMessage(monitor, entry)
+-- Render text message
+local function renderText(monitor, entry)
     monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
     monitor.clear()
     monitor.setTextColor(colors[entry.Text_Color] or colors.white)
@@ -28,6 +28,20 @@ local function renderMessage(monitor, entry)
     local msg = centerText(entry.message, w)
     monitor.setCursorPos(1, math.floor(h / 2))
     monitor.write(msg)
+end
+
+-- Render image from .nfp file
+local function renderImage(monitor, imagePath)
+    local image = paintutils.loadImage(imagePath)
+    if image then
+        monitor.setBackgroundColor(colors.black)
+        monitor.clear()
+        paintutils.drawImage(image, 1, 1)
+    else
+        monitor.clear()
+        monitor.setCursorPos(1, 1)
+        monitor.write("Failed to load image")
+    end
 end
 
 -- Load JSON from file
@@ -46,12 +60,27 @@ while true do
     local messages = loadMessages()
     for _, entry in ipairs(messages) do
         local target = entry.monitorID or "all"
-        for id, monitor in pairs(monitors) do
-            if target == "all" or id == target then
-                renderMessage(monitor, entry)
+        local duration = tonumber(entry.duration) or 5
+
+        -- If imageURL is present, download and render image
+        if entry.imageURL then
+            local imagePath = "temp_image.nfp"
+            shell.run("wget", entry.imageURL, imagePath)
+            for id, monitor in pairs(monitors) do
+                if target == "all" or id == target then
+                    renderImage(monitor, imagePath)
+                end
+            end
+            fs.delete(imagePath)
+        elseif entry.message then
+            for id, monitor in pairs(monitors) do
+                if target == "all" or id == target then
+                    renderText(monitor, entry)
+                end
             end
         end
-        sleep(tonumber(entry.duration) or 5)
+
+        sleep(duration)
     end
 
     -- Refresh JSON from remote source
