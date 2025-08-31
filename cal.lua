@@ -1,3 +1,29 @@
+-- cmd_query_manager.lua
+-- A pure “commands” ComputerCraft dashboard:
+-- • Uses the built-in commands API (Command Computer)  
+-- • No HTTP, no RCON  
+-- • Shows server uptime, player list + each player’s session time  
+-- • Press S to schedule a shutdown; displays a big red countdown overlay  
+
+-------------------------------------------------------------------------------
+-- 1) SETUP
+-------------------------------------------------------------------------------
+-- Must be running on a Command Computer
+if not commands or type(commands.exec) ~= "function" then
+  error("This script requires a Command Computer with the commands API.")
+end
+local cmd = commands
+
+-- Wrap the first attached monitor
+local mon = peripheral.find("monitor")
+if not mon then error("Attach a monitor to display stats.") end
+mon.setTextScale(1)
+
+-- Ensure a playtime objective exists (tracks minutes online)
+pcall(function()
+  cmd.exec("scoreboard objectives add playtime minecraft.custom:minecraft.play_one_minute PlayTime")
+end)
+
 -- cmd_query_manager.lua  (patched)
 
 -- … at the top you already did:
@@ -55,4 +81,106 @@ local function getPlaytime(name)
   return score
 end
 
--- … rest of your code stays the same, calling these helpers …
+
+-------------------------------------------------------------------------------
+-- 3) RENDERERS
+-------------------------------------------------------------------------------
+-- Draw the main dashboard
+local function drawDashboard()
+  local uptimeSec = getServerUptime()
+  local players   = getPlayerList()
+
+  mon.clear()
+  mon.setCursorPos(1,1)
+  mon.write("=== Server Status ===")
+
+  mon.setCursorPos(1,3)
+  mon.write("Uptime: " .. fmtDuration(uptimeSec))
+
+  mon.setCursorPos(1,5)
+  mon.write(string.format("Players Online: %d", #players))
+
+  local y = 7
+  for _, name in ipairs(players) do
+    local mins = getPlaytime(name)
+    mon.setCursorPos(1, y)
+    mon.write(string.format("%s (%s)", name, fmtDuration(mins * 60)))
+    y = y + 1
+  end
+end
+
+-- Draw a full-screen red shutdown countdown
+local shutdownAt
+local function drawShutdownOverlay()
+  if not shutdownAt then return end
+  local now = os.time()
+  if now >= shutdownAt then
+    mon.clear()
+    mon.setCursorPos(1,1)
+    mon.write("SERVER IS SHUTTING DOWN")
+    return
+  end
+
+  local rem = shutdownAt - now
+  local msg = string.format("SHUTDOWN IN %02d:%02d", math.floor(rem/60), rem%60)
+
+  local w,h = mon.getSize()
+  mon.setBackgroundColor(colors.red)
+  mon.clear()
+  mon.setTextColor(colors.white)
+  mon.setTextScale(2)
+
+  local x = math.floor((w - #msg) / 2) + 1
+  local y = math.floor(h / 2)
+  mon.setCursorPos(x, y)
+  mon.write(msg)
+
+  mon.setTextScale(1)
+  mon.setBackgroundColor(colors.black)
+end
+
+-------------------------------------------------------------------------------
+-- 4) INPUT LOOP
+-------------------------------------------------------------------------------
+-- Press S to schedule shutdown, Q to quit
+local function keyListener()
+  while true do
+    local _, key = os.pullEvent("key")
+    if key == keys.s then
+      term.clear(); term.setCursorPos(1,1)
+      write("Shutdown in how many seconds? ")
+      local d = tonumber(read())
+      if d and d > 0 then
+        shutdownAt     = os.time() + d
+        os.startTimer(d)
+      end
+    elseif key == keys.q then
+      error("Exiting manager.")
+    end
+  end
+end
+
+-------------------------------------------------------------------------------
+-- 5) MAIN LOOP
+-------------------------------------------------------------------------------
+-- Kick off the first periodic update
+os.startTimer(1)
+
+local function mainLoop()
+  while true do
+    local ev, id = os.pullEvent("timer")
+    if shutdownAt and id == shutdownAt then
+      cmd.exec("stop")
+    end
+
+    -- Redraw dashboard + overlay
+    drawDashboard()
+    drawShutdownOverlay()
+
+    -- next update in 1s
+    os.startTimer(1)
+  end
+end
+
+print("Press 'S' to schedule shutdown, 'Q' to quit.")
+parallel.waitForAny(mainLoop, keyListener)
