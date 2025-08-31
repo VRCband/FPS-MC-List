@@ -62,9 +62,9 @@ while true do
         local target = entry.monitorID or "all"
         local duration = tonumber(entry.duration) or 5
 
-        -- If imageURL is present, download and render image
         if entry.imageURL then
             local imagePath = "temp_image.nfp"
+            if fs.exists(imagePath) then fs.delete(imagePath) end
             shell.run("wget", entry.imageURL, imagePath)
             for id, monitor in pairs(monitors) do
                 if target == "all" or id == target then
@@ -83,7 +83,8 @@ while true do
         sleep(duration)
     end
 
-    -- Refresh JSON from remote source
+    -- Refresh JSON from remote source (overwrite)
+    if fs.exists(jsonPath) then fs.delete(jsonPath) end
     shell.run("wget", jsonURL, jsonPath)
 end
 
