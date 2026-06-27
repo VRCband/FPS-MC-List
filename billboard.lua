@@ -107,56 +107,53 @@ local function wrap(text, width)
     return lines
 end
 
--- Render centered text
 local function renderText(monitor, entry)
-    if not entry.message then
-        print("ERROR: Entry missing 'message' field.")
-        return
-    end
-
-    monitor.setTextScale(tonumber(entry.Text_Size) or 1)
+    -- Safe text scale
+    local scale = tonumber(entry.Text_Size) or 1
+    if scale < 0.5 then scale = 0.5 end
+    if scale > 5 then scale = 5 end
+    monitor.setTextScale(scale)
 
     local w, h = monitor.getSize()
-    local raw = entry.message
+    local raw = entry.message or ""
 
     -- Markdown-like formatting
     raw = raw:gsub("%*%*(.-)%*%*", function(s) return s:upper() end)
     raw = raw:gsub("%*(.-)%*", "%1")
 
-    local paragraphs = splitLines(raw)
-    local lines = {}
+    -- Split into paragraphs
+    local paragraphs = {}
+    for line in raw:gmatch("([^\n]*)\n?") do
+        table.insert(paragraphs, line)
+    end
 
+    -- Wrap all lines
+    local lines = {}
     for _, p in ipairs(paragraphs) do
         local header = p:match("^# (.+)")
         if header then
             table.insert(lines, header:upper())
-            table.insert(lines, "")
         else
-            for _, l in ipairs(wrap(p, w)) do
-                table.insert(lines, l)
+            while #p > w do
+                table.insert(lines, p:sub(1, w))
+                p = p:sub(w + 1)
             end
-            table.insert(lines, "")
+            table.insert(lines, p)
         end
     end
 
-    if lines[#lines] == "" then table.remove(lines) end
-
-    local bg = colors[entry.bgColor] or colors.black
-    local fg = colors[entry.Text_Color] or colors.white
-
-    monitor.setBackgroundColor(bg)
+    -- Apply colors
+    monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
     monitor.clear()
-    monitor.setTextColor(fg)
+    monitor.setTextColor(colors[entry.Text_Color] or colors.white)
 
-    local total = #lines
-    local startY = math.floor((h - total) / 2) + 1
-
-    for i, line in ipairs(lines) do
-        local pad = math.floor((w - #line) / 2)
-        monitor.setCursorPos(pad + 1, startY + i - 1)
-        monitor.write(line)
+    -- Draw from top, clipped to monitor height
+    for i = 1, math.min(#lines, h) do
+        monitor.setCursorPos(1, i)
+        monitor.write(lines[i])
     end
 end
+
 
 -- Dispatch message
 local function dispatch(entry)
