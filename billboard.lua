@@ -1,153 +1,194 @@
--- billboard.lua
--- Prompt for channel and JSON file
+-- billboard.lua (with full error handling)
+
 term.clear()
 term.setCursorPos(1,1)
 print("Billboard Sender Setup")
 
--- 1) Channel
+-- Ask user for channel + JSON file
 write("Enter channel name: ")
 local channel = read()
 
--- 2) JSON filename
-write("Enter JSON filename (e.g. lobby.json): ")
+write("Enter JSON filename (e.g. spawn.json): ")
 local jsonFile = read()
 
--- CONFIG
-local jsonPath = "billboard.json"
-local baseURL  = "https://github.com/VRCband/FPS-MC-List/raw/refs/heads/main/"
-local jsonURL  = baseURL .. jsonFile
+-- Remote JSON URL
+local baseURL = "https://raw.githubusercontent.com/VRCband/FPS-MC-List/refs/heads/main/"
+local jsonURL = baseURL .. jsonFile
+local localJSON = "billboard.json"
 
 -- Open all modem sides
+local modemOpened = false
 for _, side in ipairs({"left","right","top","bottom","back","front"}) do
-  if peripheral.getType(side) == "modem" then
-    rednet.open(side)
-  end
+    if peripheral.getType(side) == "modem" then
+        rednet.open(side)
+        modemOpened = true
+    end
 end
 
--- Discover local monitors
+if not modemOpened then
+    error("ERROR: No modem found. Cannot broadcast messages.")
+end
+
+-- Detect monitors
 local monitors = {}
 for _, name in ipairs(peripheral.getNames()) do
-  if peripheral.getType(name) == "monitor" then
-    monitors[name] = peripheral.wrap(name)
-  end
+    if peripheral.getType(name) == "monitor" then
+        monitors[name] = peripheral.wrap(name)
+    end
 end
 
--- Load JSON from remote
+if next(monitors) == nil then
+    error("ERROR: No monitors detected. Place at least one monitor touching the computer.")
+end
+
+-- Download + load JSON
 local function loadMessages()
-  if fs.exists(jsonPath) then fs.delete(jsonPath) end
-  shell.run("wget", jsonURL, jsonPath)
-  local f   = fs.open(jsonPath, "r")
-  local raw = f.readAll()
-  f.close()
-  return textutils.unserializeJSON(raw)
-end
+    if fs.exists(localJSON) then fs.delete(localJSON) end
 
--- Helper: split on literal sep
-local function split(str, sep)
-  local parts, last = {}, 1
-  sep = sep:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])","%%%1")
-  for s,e in function() return str:find(sep, last, true) end do
-    parts[#parts+1] = str:sub(last, s-1)
-    last = e + 1
-  end
-  parts[#parts+1] = str:sub(last)
-  return parts
-end
+    print("Downloading JSON from: " .. jsonURL)
+    local ok = shell.run("wget", jsonURL, localJSON)
 
--- Helper: wrap text to width
-local function wrapToWidth(text, width)
-  local lines, i = {}, 1
-  while i <= #text do
-    local chunk   = text:sub(i, i + width - 1)
-    local wrapPos = chunk:match("^.*() ") or 0
-    if wrapPos > 0 and #chunk == width then
-      lines[#lines+1] = text:sub(i, i + wrapPos - 2)
-      i = i + wrapPos
-    else
-      lines[#lines+1] = chunk
-      i = i + #chunk
+    if not ok or not fs.exists(localJSON) then
+        print("ERROR: Failed to download JSON file.")
+        sleep(3)
+        return nil
     end
-    while text:sub(i,i) == " " do i = i + 1 end
-  end
-  return lines
-end
 
--- Replace your existing renderTextCentered with this:
-local function renderTextCentered(monitor, entry)
-  -- Apply scale BEFORE measuring
-  monitor.setTextScale(tonumber(entry.Text_Size) or 1)
-
-  local w, h = monitor.getSize()
-  local raw  = entry.message or ""
-
-  -- Correct newline handling
-  local paras = split(raw, "\n")
-
-  local lines = {}
-
-  for _, para in ipairs(paras) do
-    local head = para:match("^# (.+)")
-    if head then
-      lines[#lines+1] = head:upper()
-      lines[#lines+1] = ""
-    else
-      para = para:gsub("%*%*(.-)%*%*", function(s) return s:upper() end)
-      para = para:gsub("%*(.-)%*", "%1")
-
-      for _, l in ipairs(wrapToWidth(para, w)) do
-        lines[#lines+1] = l
-      end
-      lines[#lines+1] = ""
+    local f = fs.open(localJSON, "r")
+    if not f then
+        print("ERROR: Failed to open downloaded JSON file.")
+        sleep(3)
+        return nil
     end
-  end
 
-  if lines[#lines] == "" then lines[#lines] = nil end
+    local raw = f.readAll()
+    f.close()
 
-  monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
-  monitor.clear()
-  monitor.setTextColor(colors[entry.Text_Color] or colors.white)
+    local data = textutils.unserializeJSON(raw)
+    if not data then
+        print("ERROR: JSON parse error. Check your JSON syntax.")
+        sleep(3)
+        return nil
+    end
 
-  local total  = #lines
-  local startY = math.floor((h - total) / 2) + 1
+    if type(data) ~= "table" then
+        print("ERROR: JSON root must be an array.")
+        sleep(3)
+        return nil
+    end
 
-  for i, line in ipairs(lines) do
-    local pad = math.floor((w - #line) / 2)
-    monitor.setCursorPos(pad + 1, startY + i - 1)
-    monitor.write(line)
-  end
+    return data
 end
 
-
-
-
-
-
-
-function renderLocally(monitor, entry)
-  renderTextCentered(monitor, entry)
+-- Split by newline
+local function splitLines(str)
+    local t = {}
+    for line in str:gmatch("([^\n]*)\n?") do
+        if line ~= "" then table.insert(t, line) end
+    end
+    return t
 end
 
--- Dispatch: tag with channel, render local or broadcast
+-- Wrap text to width
+local function wrap(text, width)
+    local lines = {}
+    while #text > width do
+        local cut = text:sub(1, width)
+        local space = cut:match(".*() ")
+        if space then
+            table.insert(lines, text:sub(1, space - 1))
+            text = text:sub(space + 1)
+        else
+            table.insert(lines, cut)
+            text = text:sub(width + 1)
+        end
+    end
+    table.insert(lines, text)
+    return lines
+end
+
+-- Render centered text
+local function renderText(monitor, entry)
+    if not entry.message then
+        print("ERROR: Entry missing 'message' field.")
+        return
+    end
+
+    monitor.setTextScale(tonumber(entry.Text_Size) or 1)
+
+    local w, h = monitor.getSize()
+    local raw = entry.message
+
+    -- Markdown-like formatting
+    raw = raw:gsub("%*%*(.-)%*%*", function(s) return s:upper() end)
+    raw = raw:gsub("%*(.-)%*", "%1")
+
+    local paragraphs = splitLines(raw)
+    local lines = {}
+
+    for _, p in ipairs(paragraphs) do
+        local header = p:match("^# (.+)")
+        if header then
+            table.insert(lines, header:upper())
+            table.insert(lines, "")
+        else
+            for _, l in ipairs(wrap(p, w)) do
+                table.insert(lines, l)
+            end
+            table.insert(lines, "")
+        end
+    end
+
+    if lines[#lines] == "" then table.remove(lines) end
+
+    local bg = colors[entry.bgColor] or colors.black
+    local fg = colors[entry.Text_Color] or colors.white
+
+    monitor.setBackgroundColor(bg)
+    monitor.clear()
+    monitor.setTextColor(fg)
+
+    local total = #lines
+    local startY = math.floor((h - total) / 2) + 1
+
+    for i, line in ipairs(lines) do
+        local pad = math.floor((w - #line) / 2)
+        monitor.setCursorPos(pad + 1, startY + i - 1)
+        monitor.write(line)
+    end
+end
+
+-- Dispatch message
 local function dispatch(entry)
-  entry.channel = channel
-  local target   = entry.monitorID or "all"
-  local duration = tonumber(entry.duration) or 5
-
-  if target == "local" then
-    for _, m in pairs(monitors) do
-      renderLocally(m, entry)
+    if type(entry) ~= "table" then
+        print("ERROR: Invalid entry in JSON (not a table).")
+        return
     end
-  else
-    rednet.broadcast(entry, "billboard")
-  end
 
-  sleep(duration)
+    entry.channel = channel
+    local duration = tonumber(entry.duration) or 5
+
+    for _, mon in pairs(monitors) do
+        local ok, err = pcall(renderText, mon, entry)
+        if not ok then
+            print("ERROR rendering message: " .. tostring(err))
+        end
+    end
+
+    sleep(duration)
 end
 
 -- Main loop
 while true do
-  local messages = loadMessages()
-  for _, entry in ipairs(messages) do
-    dispatch(entry)
-  end
+    local messages = loadMessages()
+
+    if not messages then
+        print("Retrying JSON download in 5 seconds...")
+        sleep(5)
+    else
+        for _, entry in ipairs(messages) do
+            dispatch(entry)
+        end
+    end
 end
+
