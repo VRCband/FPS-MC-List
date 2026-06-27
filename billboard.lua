@@ -74,52 +74,49 @@ end
 
 -- Replace your existing renderTextCentered with this:
 local function renderTextCentered(monitor, entry)
-  local w, h    = monitor.getSize()
-  local raw     = entry.message or ""
-  local paras   = split(raw, "/n")
-  local lines   = {}
+  -- Apply scale BEFORE measuring
+  monitor.setTextScale(tonumber(entry.Text_Size) or 1)
+
+  local w, h = monitor.getSize()
+  local raw  = entry.message or ""
+
+  -- Correct newline handling
+  local paras = split(raw, "\n")
+
+  local lines = {}
 
   for _, para in ipairs(paras) do
-    -- Heading?
     local head = para:match("^# (.+)")
     if head then
       lines[#lines+1] = head:upper()
       lines[#lines+1] = ""
     else
-      -- Bold → UPPERCASE
       para = para:gsub("%*%*(.-)%*%*", function(s) return s:upper() end)
-      -- Italic → remove stars
       para = para:gsub("%*(.-)%*", "%1")
-      -- Wrap
-      for _,l in ipairs(wrapToWidth(para, w)) do
+
+      for _, l in ipairs(wrapToWidth(para, w)) do
         lines[#lines+1] = l
       end
       lines[#lines+1] = ""
     end
   end
 
-  -- Remove trailing blank
   if lines[#lines] == "" then lines[#lines] = nil end
 
-  -- Center vertically
+  monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
+  monitor.clear()
+  monitor.setTextColor(colors[entry.Text_Color] or colors.white)
+
   local total  = #lines
   local startY = math.floor((h - total) / 2) + 1
 
-  -- Paint background first
-  monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
-  monitor.clear()
-
-  -- Text styling
-  monitor.setTextColor(colors[entry.Text_Color] or colors.white)
-  monitor.setTextScale(tonumber(entry.Text_Size) or 1)
-
-  -- Draw lines centered
   for i, line in ipairs(lines) do
     local pad = math.floor((w - #line) / 2)
     monitor.setCursorPos(pad + 1, startY + i - 1)
     monitor.write(line)
   end
 end
+
 
 
 
