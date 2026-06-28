@@ -107,53 +107,66 @@ local function wrap(text, width)
     return lines
 end
 
-local function renderText(monitor, entry)
-    -- Safe text scale
-    local scale = tonumber(entry.Text_Size) or 1
-    if scale < 0.5 then scale = 0.5 end
-    if scale > 5 then scale = 5 end
-    monitor.setTextScale(scale)
-
-    local w, h = monitor.getSize()
-    local raw = entry.message or ""
-
-    -- Markdown-like formatting
-    raw = raw:gsub("%*%*(.-)%*%*", function(s) return s:upper() end)
-    raw = raw:gsub("%*(.-)%*", "%1")
-
-    -- Split into paragraphs
-    local paragraphs = {}
-    for line in raw:gmatch("([^\n]*)\n?") do
-        table.insert(paragraphs, line)
-    end
-
-    -- Wrap all lines
+-- Improved text wrapping that respects words
+local function wrapText(text, width)
     local lines = {}
-    for _, p in ipairs(paragraphs) do
-        local header = p:match("^# (.+)")
-        if header then
-            table.insert(lines, header:upper())
-        else
-            while #p > w do
-                table.insert(lines, p:sub(1, w))
-                p = p:sub(w + 1)
+    for line in text:gmatch("([^\n]+)") do -- Split by actual newline first
+        local currentLine = ""
+        for word in line:gmatch("%S+") do
+            if #currentLine + #word + 1 <= width then
+                currentLine = currentLine == "" and word or currentLine .. " " .. word
+            else
+                table.insert(lines, currentLine)
+                currentLine = word
             end
-            table.insert(lines, p)
         end
+        table.insert(lines, currentLine)
     end
-
-    -- Apply colors
-    monitor.setBackgroundColor(colors[entry.bgColor] or colors.black)
-    monitor.clear()
-    monitor.setTextColor(colors[entry.Text_Color] or colors.white)
-
-    -- Draw from top, clipped to monitor height
-    for i = 1, math.min(#lines, h) do
-        monitor.setCursorPos(1, i)
-        monitor.write(lines[i])
-    end
+    return lines
 end
 
+local function renderText(monitor, entry)
+    -- 1. Apply Scale First
+    local scale = tonumber(entry.Text_Size) or 1
+    -- Clamp scale between 0.5 and 5 (ComputerCraft limits)
+    scale = math.max(0.5, math.min(5, scale))
+    monitor.setTextScale(scale)
+
+    -- 2. Get new dimensions AFTER scaling
+    local w, h = monitor.getSize()
+
+    -- 3. Prepare Colors
+    local bgColor = colors[entry.bgColor] or colors.black
+    local txtColor = colors[entry.Text_Color] or colors.white
+    monitor.setBackgroundColor(bgColor)
+    monitor.setTextColor(txtColor)
+    monitor.clear()
+
+    -- 4. Process Markdown-ish formatting (bold/headers)
+    local raw = entry.message or ""
+    raw = raw:gsub("%*%*(.-)%*%*", function(s) return s:upper() end)
+    
+    -- 5. Wrap text based on the NEW width
+    local lines = wrapText(raw, w)
+
+    -- 6. Calculate Vertical Centering
+    -- Start drawing at this Y position to center the block of text
+    local startY = math.floor((h - #lines) / 2) + 1
+    if startY < 1 then startY = 1 end
+
+    -- 7. Draw Lines with Horizontal Centering
+    for i = 1, #lines do
+        if (startY + i - 1) <= h then -- Don't draw off screen
+            local currentLine = lines[i]
+            -- Calculate X offset for centering
+            local startX = math.floor((w - #currentLine) / 2) + 1
+            if startX < 1 then startX = 1 end
+            
+            monitor.setCursorPos(startX, startY + i - 1)
+            monitor.write(currentLine)
+        end
+    end
+end
 
 -- Dispatch message
 local function dispatch(entry)
