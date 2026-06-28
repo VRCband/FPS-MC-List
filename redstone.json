@@ -2,7 +2,7 @@
   {
     "message": "Welcome to\nRedstone Industrites!",
     "Text_Color": "white",
-    "Text_Size": 1.5,
+    "Text_Size": 1,
     "bgColor": "red",
     "duration": 5,
     "monitorID": "all"
@@ -10,7 +10,7 @@
   {
     "message": "Late on your power bill? \n Contact a server admin!",
     "Text_Color": "white",
-    "Text_Size": 1.5,
+    "Text_Size": 1,
     "bgColor": "red",
     "duration": 5,
     "monitorID": "all"
