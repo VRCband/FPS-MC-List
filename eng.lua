@@ -10,32 +10,45 @@ local username = read()
 
 local bookTitle = "Engineer's Certification for " .. username
 
-local pages = {
-    "Server: FPS-Create\nEngineer: " .. username,
+-- Max characters per line (based on your requirement)
+local MAX_LINE = 22
+
+-- All text for ONE page
+local pageText = table.concat({
+    "Server: FPS-Create",
+    "Engineer: " .. username,
     "Thanks for playing FPS-Create!",
-    "Your generator and any future generators are certified for use with any electric systems."
-}
+    "Your generator and any future generators",
+    "are certified for use with any electric systems."
+}, "\n")
 
-for i, text in ipairs(pages) do
-    -- Start a new page
-    if not printer.newPage() then
-        error("Cannot start a new page. Do you have ink and paper?")
-    end
+-- Function: write text with newline + max line length
+local function writeWithLimits(printer, text)
+    local x, y = printer.getCursorPos()
 
-    -- Title
-    printer.setPageTitle(bookTitle .. " - Page " .. i)
+    for rawLine in text:gmatch("[^\n]+") do
+        -- enforce max line length
+        local line = rawLine:sub(1, MAX_LINE)
 
-    -- Start at top-left
-    printer.setCursorPos(1, 1)
+        printer.write(line)
 
-    -- Write text
-    printer.write(text)
-
-    -- Print the page (endPage actually prints)
-    if not printer.endPage() then
-        error("Cannot end the page. Is there enough space?")
+        y = y + 1
+        printer.setCursorPos(1, y)
     end
 end
 
-print("Printed " .. #pages .. " pages for " .. username)
+-- Start printing ONE page
+if not printer.newPage() then
+    error("Cannot start a new page. Do you have ink and paper?")
+end
 
+printer.setPageTitle(bookTitle .. " - Page 1")
+printer.setCursorPos(1, 1)
+
+writeWithLimits(printer, pageText)
+
+if not printer.endPage() then
+    error("Cannot end the page. Is there enough space?")
+end
+
+print("Printed 1 page for " .. username)
