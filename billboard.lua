@@ -1,22 +1,115 @@
--- billboard.lua (with full error handling)
+-------------------------------
+-- billboard.lua (full script)
+-------------------------------
 
 term.clear()
 term.setCursorPos(1,1)
-print("Billboard Sender Setup")
 
--- Ask user for channel + JSON file
-write("Enter channel name: ")
-local channel = read()
+local CONFIG_FILE = "billboard.conf"
 
-write("Enter JSON filename (e.g. spawn.json): ")
-local jsonFile = read()
+-------------------------------
+-- CONFIG SAVE / LOAD
+-------------------------------
+local function saveConfig(channel, jsonFile)
+    local f = fs.open(CONFIG_FILE, "w")
+    f.write(textutils.serialize({channel = channel, jsonFile = jsonFile}))
+    f.close()
+end
 
--- Remote JSON URL
+local function loadConfig()
+    if not fs.exists(CONFIG_FILE) then return nil end
+    local f = fs.open(CONFIG_FILE, "r")
+    local raw = f.readAll()
+    f.close()
+    return textutils.unserialize(raw)
+end
+
+-------------------------------
+-- BOOT MENU WITH TIMEOUT
+-------------------------------
+local cfg = loadConfig()
+
+print("FPS-Create Billboard")
+print("---------------------")
+
+if cfg then
+    print("Saved config found:")
+    print("Channel: " .. cfg.channel)
+    print("JSON: " .. cfg.jsonFile)
+    print("")
+    print("[ENTER] Use saved config")
+    print("[R] Reconfigure")
+    print("[Q] Quit")
+    print("")
+    print("Auto-continue in 5 seconds...")
+
+    local timer = os.startTimer(5)
+    local choice = nil
+
+    while true do
+        local event, p1 = os.pullEvent()
+
+        if event == "timer" and p1 == timer then
+            choice = ""   -- auto-continue
+            break
+        elseif event == "key" then
+            local key = p1
+            local char = keys.getName(key)
+
+            if char == "enter" then
+                choice = ""
+                break
+            elseif char == "r" then
+                choice = "r"
+                break
+            elseif char == "q" then
+                choice = "q"
+                break
+            end
+        end
+    end
+
+    if choice == "q" then
+        print("Exiting...")
+        return
+    elseif choice == "r" then
+        cfg = nil -- force reconfigure
+    end
+end
+
+-------------------------------
+-- CONFIG SETUP (if needed)
+-------------------------------
+local channel
+local jsonFile
+
+if cfg then
+    channel = cfg.channel
+    jsonFile = cfg.jsonFile
+else
+    term.clear()
+    term.setCursorPos(1,1)
+    print("Billboard Sender Setup")
+
+    write("Enter channel name: ")
+    channel = read()
+
+    write("Enter JSON filename (e.g. spawn.json): ")
+    jsonFile = read()
+
+    saveConfig(channel, jsonFile)
+end
+
+-------------------------------
+-- REMOTE JSON URL
+-------------------------------
 local baseURL = "https://raw.githubusercontent.com/VRCband/FPS-MC-List/refs/heads/main/"
 local jsonURL = baseURL .. jsonFile
 local localJSON = "billboard.json"
 
--- Open all modem sides
+-------------------------------
+-- OPEN ALL MODEMS
+-------------------------------
 local modemOpened = false
 for _, side in ipairs({"left","right","top","bottom","back","front"}) do
     if peripheral.getType(side) == "modem" then
@@ -29,7 +122,9 @@ if not modemOpened then
     error("ERROR: No modem found. Cannot broadcast messages.")
 end
 
--- Detect monitors
+-------------------------------
+-- DETECT MONITORS
+-------------------------------
 local monitors = {}
 for _, name in ipairs(peripheral.getNames()) do
     if peripheral.getType(name) == "monitor" then
@@ -41,7 +136,9 @@ if next(monitors) == nil then
     error("ERROR: No monitors detected. Place at least one monitor touching the computer.")
 end
 
--- Download + load JSON
+-------------------------------
+-- DOWNLOAD + LOAD JSON
+-------------------------------
 local function loadMessages()
     if fs.exists(localJSON) then fs.delete(localJSON) end
 
@@ -80,37 +177,12 @@ local function loadMessages()
     return data
 end
 
--- Split by newline
-local function splitLines(str)
-    local t = {}
-    for line in str:gmatch("([^\n]*)\n?") do
-        if line ~= "" then table.insert(t, line) end
-    end
-    return t
-end
-
--- Wrap text to width
-local function wrap(text, width)
-    local lines = {}
-    while #text > width do
-        local cut = text:sub(1, width)
-        local space = cut:match(".*() ")
-        if space then
-            table.insert(lines, text:sub(1, space - 1))
-            text = text:sub(space + 1)
-        else
-            table.insert(lines, cut)
-            text = text:sub(width + 1)
-        end
-    end
-    table.insert(lines, text)
-    return lines
-end
-
--- Improved text wrapping that respects words
+-------------------------------
+-- TEXT WRAPPING
+-------------------------------
 local function wrapText(text, width)
     local lines = {}
-    for line in text:gmatch("([^\n]+)") do -- Split by actual newline first
+    for line in text:gmatch("([^\n]+)") do
         local currentLine = ""
         for word in line:gmatch("%S+") do
             if #currentLine + #word + 1 <= width then
@@ -125,50 +197,45 @@ local function wrapText(text, width)
     return lines
 end
 
+-------------------------------
+-- RENDER TEXT TO MONITOR
+-------------------------------
 local function renderText(monitor, entry)
-    -- 1. Apply Scale First
     local scale = tonumber(entry.Text_Size) or 1
-    -- Clamp scale between 0.5 and 5 (ComputerCraft limits)
     scale = math.max(0.5, math.min(5, scale))
     monitor.setTextScale(scale)
 
-    -- 2. Get new dimensions AFTER scaling
     local w, h = monitor.getSize()
 
-    -- 3. Prepare Colors
     local bgColor = colors[entry.bgColor] or colors.black
     local txtColor = colors[entry.Text_Color] or colors.white
     monitor.setBackgroundColor(bgColor)
     monitor.setTextColor(txtColor)
     monitor.clear()
 
-    -- 4. Process Markdown-ish formatting (bold/headers)
     local raw = entry.message or ""
     raw = raw:gsub("%*%*(.-)%*%*", function(s) return s:upper() end)
-    
-    -- 5. Wrap text based on the NEW width
+
     local lines = wrapText(raw, w)
 
-    -- 6. Calculate Vertical Centering
-    -- Start drawing at this Y position to center the block of text
     local startY = math.floor((h - #lines) / 2) + 1
     if startY < 1 then startY = 1 end
 
-    -- 7. Draw Lines with Horizontal Centering
     for i = 1, #lines do
-        if (startY + i - 1) <= h then -- Don't draw off screen
+        if (startY + i - 1) <= h then
             local currentLine = lines[i]
-            -- Calculate X offset for centering
             local startX = math.floor((w - #currentLine) / 2) + 1
             if startX < 1 then startX = 1 end
-            
+
             monitor.setCursorPos(startX, startY + i - 1)
             monitor.write(currentLine)
         end
     end
 end
 
--- Dispatch message
+-------------------------------
+-- DISPATCH MESSAGE
+-------------------------------
 local function dispatch(entry)
     if type(entry) ~= "table" then
         print("ERROR: Invalid entry in JSON (not a table).")
@@ -188,7 +255,9 @@ local function dispatch(entry)
     sleep(duration)
 end
 
--- Main loop
+-------------------------------
+-- MAIN LOOP
+-------------------------------
 while true do
     local messages = loadMessages()
 
