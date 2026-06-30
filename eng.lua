@@ -1,11 +1,10 @@
-local p = peripheral.find("printer")
-if not p then
+local printer = peripheral.find("printer")
+if not printer then
     print("No printer found")
     return
 end
 
 print("Create an Engineer's Cert")
-
 print("Enter username:")
 local username = read()
 
@@ -17,24 +16,26 @@ local pages = {
     "Your generator and any future generators are certified for use with any electric systems."
 }
 
--- Print each page
 for i, text in ipairs(pages) do
-    if not p.newPage() then
-        error("Cannot start a new page. Check ink/paper.")
+    -- Start a new page
+    if not printer.newPage() then
+        error("Cannot start a new page. Do you have ink and paper?")
     end
 
-    p.setPageTitle(bookTitle .. " - Page " .. i)
+    -- Title
+    printer.setPageTitle(bookTitle .. " - Page " .. i)
 
-    -- Optional: reset cursor to top-left
-    p.setCursorPos(1, 1)
+    -- Start at top-left
+    printer.setCursorPos(1, 1)
 
-    -- Write the page text
-    p.write(text)
+    -- Write text
+    printer.write(text)
 
-    if not p.endPage() then
-        error("Cannot end page. Tray full?")
+    -- Print the page (endPage actually prints)
+    if not printer.endPage() then
+        error("Cannot end the page. Is there enough space?")
     end
 end
 
-p.print()
 print("Printed " .. #pages .. " pages for " .. username)
+
