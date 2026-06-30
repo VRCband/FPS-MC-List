@@ -10,19 +10,22 @@ local username = read()
 
 local bookTitle = "Engineer's Certification for " .. username
 
--- Max characters per line (based on your requirement)
-local MAX_LINE = 22
-
--- All text for ONE page
+-- All text for ONE page (with \n)
 local pageText = table.concat({
     "Server: FPS-Create",
     "Engineer: " .. username,
-    "Thanks for playing FPS-Create!",
-    "Your generator and any future generators",
-    "are certified for use with any electric systems."
+    "Thanks for playing FPS",
+    "Your generator and any",
+    "future generators are",
+    "certified for use with",
+    "any electric systems."
 }, "\n")
 
--- Function: write text with newline + max line length
+
+-- Max characters per line INCLUDING spaces
+local MAX_LINE = 22
+
+-- Write text with newline + max length enforcement
 local function writeWithLimits(printer, text)
     local x, y = printer.getCursorPos()
 
